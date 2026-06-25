@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:clicker_test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+app:
+  jwt:
+    secret: test-secret-key-for-tests-must-be-at-least-256-bits-long-for-hs256
+    expiration-ms: 3600000
+  asocks:
+    base-url: http://localhost:9999/v2
+    api-key: test-api-key
+  simulation:
+    playwright:
+      headless: true
+      max-concurrent-browsers: 2
+      browser-pool-size: 1
+    http:
+      max-concurrent-requests: 5
+      request-timeout-seconds: 10
+    proxy-refresh-interval-minutes: 60

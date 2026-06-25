@@ -1,0 +1,59 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/clicker?stringtype=unspecified
+    username: clicker
+    password: clicker
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        type:
+          preferred_enum_jdbc_type: VARCHAR
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:local-dev-secret-change-in-production-use-at-least-256-bits}
+    expiration-ms: 86400000
+  asocks:
+    base-url: https://api.asocks.com/v2
+    api-key: ${ASOCKS_API_KEY:}
+  simulation:
+    playwright:
+      headless: true
+      max-concurrent-browsers: 10
+      browser-pool-size: 5
+    http:
+      max-concurrent-requests: 50
+      request-timeout-seconds: 30
+    proxy-refresh-interval-minutes: 15
+    user-agent-pool-file: classpath:user-agents.txt
+
+logging:
+  level:
+    com.clicker: DEBUG
+    org.springframework.web.socket: DEBUG

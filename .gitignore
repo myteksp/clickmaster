@@ -1,0 +1,33 @@
+# Build output
+backend/build/
+backend/.gradle/
+backend/bin/
+frontend/dist/
+frontend/node_modules/
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Java
+*.class
+*.jar
+*.war
+!gradle/wrapper/gradle-wrapper.jar
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+/tmp/
+
+# Test output
+backend/out/
