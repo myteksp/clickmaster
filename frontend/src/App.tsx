@@ -1,5 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './components/Toast';
+import ErrorBoundary from './components/ErrorBoundary';
+import { setUnauthorizedHandler } from './api/client';
 import Layout from './pages/Layout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -33,6 +37,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="campaigns" element={<CampaignsPage />} />
         <Route path="campaigns/new" element={<CampaignFormPage />} />
+        <Route path="campaigns/:id/edit" element={<CampaignFormPage />} />
         <Route path="campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="scenarios" element={<ScenariosPage />} />
         <Route path="scenarios/new" element={<ScenarioFormPage />} />
@@ -45,12 +50,29 @@ function AppRoutes() {
   );
 }
 
+function UnauthorizedHandler() {
+  const { logout } = useAuth();
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      logout();
+      window.location.href = '/login';
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <ToastProvider>
+            <UnauthorizedHandler />
+            <AppRoutes />
+          </ToastProvider>
+        </AuthProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

@@ -77,6 +77,6 @@ class AuthControllerTest extends BaseControllerTest {
     @Test
     void shouldRequireAuthForProtectedEndpoints() throws Exception {
         mockMvc.perform(get("/api/campaigns"))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isUnauthorized());
     }
 }

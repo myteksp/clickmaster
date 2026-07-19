@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { scenariosApi } from '../api/endpoints';
 import type { ScenarioStep } from '../api/types';
+import { useToast } from '../components/Toast';
 
 const ACTION_TYPES = [
   { value: 'LOAD', label: 'Load Page' },
@@ -18,6 +19,7 @@ const ACTION_TYPES = [
 export default function ScenarioFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const isEdit = !!id;
 
   const [name, setName] = useState('');
@@ -80,8 +82,7 @@ export default function ScenarioFormPage() {
       }
       navigate('/scenarios');
     } catch (err) {
-      console.error(err);
-      alert('Failed to save scenario');
+      toast.error(err instanceof Error ? err.message : 'Failed to save scenario');
     } finally {
       setLoading(false);
     }

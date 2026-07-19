@@ -100,13 +100,10 @@ test.describe('Sites — complete coverage', () => {
     await page.fill('input[placeholder="https://example.com"]', 'https://delete.com');
     await page.click('button:has-text("Create")');
 
-    page.on('dialog', dialog => {
-      expect(dialog.message()).toContain('Delete');
-      dialog.accept();
-    });
     await page.click('button:has-text("Delete")');
+    await page.locator('.fixed button:has-text("Delete")').click();
 
-    await expect(page.locator('text=Delete Me')).not.toBeVisible();
+    await expect(page.getByText('Delete Me', { exact: true })).not.toBeVisible();
   });
 
   test('create multiple sites, verify list order', async ({ page }) => {
@@ -122,7 +119,7 @@ test.describe('Sites — complete coverage', () => {
     await page.click('a:has-text("Sites")');
     // All three should be visible
     for (const name of sites) {
-      await expect(page.locator('text=' + name)).toBeVisible();
+      await expect(page.getByText(name, { exact: true })).toBeVisible();
     }
   });
 });

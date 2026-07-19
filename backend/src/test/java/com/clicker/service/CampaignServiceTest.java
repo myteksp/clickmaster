@@ -53,6 +53,7 @@ class CampaignServiceTest {
             List.of(),
             new UserAgentConfigDto("RANDOM", List.of()),
             new ProxyConfigDto("ASOCKS"),
+            List.of(),
             List.of()
         );
     }
@@ -90,6 +91,7 @@ class CampaignServiceTest {
             List.of(),
             new UserAgentConfigDto("RANDOM", List.of()),
             new ProxyConfigDto("ASOCKS"),
+            List.of(),
             List.of()
         );
         var updated = campaignService.updateCampaign(created.id(), updatedReq, userId);

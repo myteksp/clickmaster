@@ -54,6 +54,9 @@ public class Campaign {
     @Column(name = "proxy_config", columnDefinition = "jsonb")
     private String proxyConfig = "{\"provider\": \"ASOCKS\"}";
 
+    @Column(name = "click_targets", columnDefinition = "TEXT")
+    private String clickTargets = "[]";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -214,6 +217,14 @@ public class Campaign {
         this.proxyConfig = proxyConfig;
     }
 
+    public String getClickTargets() {
+        return clickTargets;
+    }
+
+    public void setClickTargets(String clickTargets) {
+        this.clickTargets = clickTargets;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -286,6 +297,7 @@ public class Campaign {
         private String deviceProfile = "[]";
         private String userAgentConfig = "{\"rotation\": \"RANDOM\"}";
         private String proxyConfig = "{\"provider\": \"ASOCKS\"}";
+        private String clickTargets = "[]";
         private Instant createdAt = Instant.now();
         private Instant updatedAt = Instant.now();
         private Instant lastRunAt;
@@ -366,6 +378,11 @@ public class Campaign {
             return this;
         }
 
+        public Builder clickTargets(String clickTargets) {
+            this.clickTargets = clickTargets;
+            return this;
+        }
+
         public Builder createdAt(Instant createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -412,6 +429,7 @@ public class Campaign {
             campaign.deviceProfile = this.deviceProfile;
             campaign.userAgentConfig = this.userAgentConfig;
             campaign.proxyConfig = this.proxyConfig;
+            campaign.clickTargets = this.clickTargets;
             campaign.createdAt = this.createdAt;
             campaign.updatedAt = this.updatedAt;
             campaign.lastRunAt = this.lastRunAt;

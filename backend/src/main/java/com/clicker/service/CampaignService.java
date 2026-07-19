@@ -81,6 +81,8 @@ public class CampaignService {
                 .proxyConfig(request.proxyConfig() != null
                     ? objectMapper.writeValueAsString(request.proxyConfig())
                     : "{\"provider\": \"ASOCKS\"}")
+                .clickTargets(request.clickTargets() != null
+                    ? objectMapper.writeValueAsString(request.clickTargets()) : "[]")
                 .status(CampaignStatus.DRAFT)
                 .build();
         } catch (Exception e) {
@@ -117,6 +119,8 @@ public class CampaignService {
                 ? objectMapper.writeValueAsString(request.userAgentConfig()) : "{\"rotation\": \"RANDOM\"}");
             campaign.setProxyConfig(request.proxyConfig() != null
                 ? objectMapper.writeValueAsString(request.proxyConfig()) : "{\"provider\": \"ASOCKS\"}");
+            campaign.setClickTargets(request.clickTargets() != null
+                ? objectMapper.writeValueAsString(request.clickTargets()) : "[]");
             campaign.setSiteId(request.siteId());
         } catch (Exception e) {
             throw new RuntimeException("Failed to update campaign", e);
@@ -210,6 +214,7 @@ public class CampaignService {
     private CampaignDto toDto(Campaign c) {
         List<GeoDistributionDto> geos = new ArrayList<>();
         List<DeviceProfileDto> devices = new ArrayList<>();
+        List<ClickTargetDto> clickTargets = new ArrayList<>();
         UserAgentConfigDto uaConfig = new UserAgentConfigDto("RANDOM", List.of());
         ProxyConfigDto proxyConfig = new ProxyConfigDto("ASOCKS");
 
@@ -224,6 +229,9 @@ public class CampaignService {
         } catch (Exception ignored) {}
         try {
             proxyConfig = objectMapper.readValue(c.getProxyConfig(), ProxyConfigDto.class);
+        } catch (Exception ignored) {}
+        try {
+            clickTargets = objectMapper.readValue(c.getClickTargets(), new TypeReference<List<ClickTargetDto>>() {});
         } catch (Exception ignored) {}
 
         List<CampaignScenarioDto> scenarios = c.getCampaignScenarios() != null
@@ -246,7 +254,7 @@ public class CampaignService {
             c.getName(), c.getStatus(), c.getSimulationLevel(),
             c.getTrafficPattern(), c.getVisitsPerHour(), c.getDurationMinutes(),
             c.getScheduleCron(), geos, devices, uaConfig, proxyConfig,
-            scenarios, c.getCreatedAt(), c.getUpdatedAt(), c.getLastRunAt()
+            clickTargets, scenarios, c.getCreatedAt(), c.getUpdatedAt(), c.getLastRunAt()
         );
     }
 }

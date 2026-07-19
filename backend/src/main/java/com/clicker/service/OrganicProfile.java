@@ -163,8 +163,15 @@ public record OrganicProfile(
         all.addAll(MOBILE_PROFILES);
 
         var matching = all.stream()
-            .filter(p -> p.device().equalsIgnoreCase(device) || p.browser().toLowerCase().startsWith(browser.toLowerCase()))
+            .filter(p -> (device == null || device.isBlank() || p.device().equalsIgnoreCase(device))
+                      && (browser == null || browser.isBlank() || p.browser().toLowerCase().startsWith(browser.toLowerCase())))
             .toList();
+
+        if (matching.isEmpty()) {
+            matching = all.stream()
+                .filter(p -> device == null || device.isBlank() || p.device().equalsIgnoreCase(device))
+                .toList();
+        }
 
         if (matching.isEmpty()) matching = all;
 

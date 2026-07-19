@@ -74,6 +74,9 @@ public class CampaignController {
     public ResponseEntity<CampaignRunDto> stop(@PathVariable UUID id,
                                                @AuthenticationPrincipal String userId) {
         var run = campaignService.stopCampaign(id, toUuid(userId));
+        if (run == null) {
+            throw new IllegalStateException("Campaign is not currently running. It may have been interrupted by a server restart.");
+        }
         return ResponseEntity.ok(new CampaignRunDto(
             run.getId(), run.getCampaignId(), run.getStatus(),
             run.getStartedAt(), run.getFinishedAt(),

@@ -27,19 +27,37 @@ public class SimulationEngine {
     private final CampaignRepository campaignRepository;
     private final CampaignRunRepository campaignRunRepository;
     private final AsocksService asocksService;
-    private final UserAgentService userAgentService;
     private final WebSocketPublisher webSocketPublisher;
     private final ObjectMapper objectMapper;
     private final HttpSimulationWorker httpWorker;
     private final BrowserSimulationWorker browserWorker;
 
-    private final Map<UUID, SimulationContext> activeSimulations = new ConcurrentHashMap<>();
     private final ScheduledExecutorService globalScheduler = Executors.newScheduledThreadPool(4, Thread.ofVirtual().factory());
+
+    public record SimulationContext(
+        UUID campaignId,
+        UUID runId,
+        Campaign campaign,
+        ExecutorService visitExecutor,
+        AtomicBoolean running,
+        AtomicInteger totalVisits,
+        AtomicInteger successfulVisits,
+        AtomicInteger failedVisits,
+        Instant startTime,
+        Semaphore concurrencyLimit
+    ) {}
+
+    private record ActiveRun(
+        SimulationContext context,
+        ScheduledFuture<?> stopFuture,
+        Thread dispatchThread
+    ) {}
+
+    private final Map<UUID, ActiveRun> activeRuns = new ConcurrentHashMap<>();
 
     public SimulationEngine(CampaignRepository campaignRepository,
                             CampaignRunRepository campaignRunRepository,
                             AsocksService asocksService,
-                            UserAgentService userAgentService,
                             WebSocketPublisher webSocketPublisher,
                             ObjectMapper objectMapper,
                             HttpSimulationWorker httpWorker,
@@ -47,35 +65,22 @@ public class SimulationEngine {
         this.campaignRepository = campaignRepository;
         this.campaignRunRepository = campaignRunRepository;
         this.asocksService = asocksService;
-        this.userAgentService = userAgentService;
         this.webSocketPublisher = webSocketPublisher;
         this.objectMapper = objectMapper;
         this.httpWorker = httpWorker;
         this.browserWorker = browserWorker;
     }
 
-    public record SimulationContext(
-        UUID campaignId,
-        UUID runId,
-        Campaign campaign,
-        CampaignRun run,
-        ScheduledExecutorService scheduler,
-        AtomicBoolean running,
-        AtomicInteger totalVisits,
-        AtomicInteger successfulVisits,
-        AtomicInteger failedVisits,
-        Instant startTime,
-        ScheduledFuture<?> stopFuture
-    ) {}
-
     @Transactional
     public CampaignRun startCampaign(UUID campaignId) {
         Campaign campaign = campaignRepository.findById(campaignId)
             .orElseThrow(() -> new IllegalArgumentException("Campaign not found: " + campaignId));
 
-        if (activeSimulations.containsKey(campaignId)) {
+        if (campaign.getStatus() == CampaignStatus.RUNNING) {
             throw new IllegalStateException("Campaign is already running");
         }
+
+        String ignored = campaign.getSite() != null ? campaign.getSite().getBaseUrl() : "";
 
         campaign.setStatus(CampaignStatus.RUNNING);
         campaignRepository.save(campaign);
@@ -90,49 +95,192 @@ public class SimulationEngine {
         Map<String, Integer> geoMap = buildGeoCountMap(campaign);
         asocksService.initPool(poolKey, geoMap);
 
-        var context = new SimulationContext(
-            campaignId, run.getId(), campaign, run,
-            Executors.newScheduledThreadPool(2, Thread.ofVirtual().factory()),
+        var ctx = new SimulationContext(
+            campaignId, run.getId(), campaign,
+            Executors.newVirtualThreadPerTaskExecutor(),
             new AtomicBoolean(true),
-            new AtomicInteger(0),
-            new AtomicInteger(0),
-            new AtomicInteger(0),
+            new AtomicInteger(0), new AtomicInteger(0), new AtomicInteger(0),
             Instant.now(),
-            null
+            new Semaphore(5)
         );
 
         long intervalMs = calculateIntervalMs(campaign);
-        SimulationLevel level = campaign.getSimulationLevel();
-        int durationMinutes = campaign.getDurationMinutes();
-
-        ScheduledFuture<?> visitTask = context.scheduler().scheduleAtFixedRate(() -> {
-            if (!context.running().get()) return;
-            executeVisit(context, poolKey, level);
-        }, 0, intervalMs, TimeUnit.MILLISECONDS);
+        Thread dispatchThread = startDispatchLoop(ctx, poolKey, campaign.getSimulationLevel(), intervalMs);
 
         ScheduledFuture<?> stopFuture = globalScheduler.schedule(() -> {
             log.info("Duration reached for campaign {}, stopping", campaignId);
-            stopCampaign(campaignId);
-        }, durationMinutes, TimeUnit.MINUTES);
+            try { stopCampaign(campaignId); } catch (Exception e) {
+                log.error("Auto-stop failed for {}", campaignId, e);
+            }
+        }, campaign.getDurationMinutes(), TimeUnit.MINUTES);
 
-        var finalContext = new SimulationContext(
-            context.campaignId(), context.runId(), context.campaign(), context.run(),
-            context.scheduler(), context.running(),
-            context.totalVisits(), context.successfulVisits(), context.failedVisits(),
-            context.startTime(), stopFuture
-        );
-
-        activeSimulations.put(campaignId, finalContext);
+        activeRuns.put(campaignId, new ActiveRun(ctx, stopFuture, dispatchThread));
 
         webSocketPublisher.sendStatus(run.getId().toString(), "RUNNING");
         log.info("Started campaign '{}' — {} visits/h, {}m duration, {} simulation",
-            campaign.getName(), campaign.getVisitsPerHour(), durationMinutes, level);
+            campaign.getName(), campaign.getVisitsPerHour(), campaign.getDurationMinutes(), campaign.getSimulationLevel());
 
         return run;
     }
 
-    private void executeVisit(SimulationContext context, String poolKey, SimulationLevel level) {
-        GeoDistributionDto geo = pickGeo(context.campaign());
+    @Transactional
+    public CampaignRun stopCampaign(UUID campaignId) {
+        Campaign campaign = campaignRepository.findById(campaignId)
+            .orElseThrow(() -> new IllegalArgumentException("Campaign not found"));
+
+        if (campaign.getStatus() != CampaignStatus.RUNNING && campaign.getStatus() != CampaignStatus.PAUSED) {
+            throw new IllegalStateException("Campaign is not running or paused (current: " + campaign.getStatus() + ")");
+        }
+
+        ActiveRun active = activeRuns.remove(campaignId);
+        if (active != null) {
+            active.context().running().set(false);
+            if (active.dispatchThread() != null) active.dispatchThread().interrupt();
+            if (active.stopFuture() != null) active.stopFuture().cancel(false);
+            active.context().visitExecutor().shutdownNow();
+        }
+
+        campaign.setStatus(CampaignStatus.COMPLETED);
+        campaign.setLastRunAt(Instant.now());
+        campaignRepository.save(campaign);
+
+        CampaignRun run = null;
+        if (active != null) {
+            run = campaignRunRepository.findById(active.context().runId()).orElse(null);
+        } else {
+            var runs = campaignRunRepository.findByCampaignIdOrderByStartedAtDesc(campaignId);
+            if (!runs.isEmpty() && runs.get(0).getStatus() == RunStatus.RUNNING) {
+                run = runs.get(0);
+            }
+        }
+
+        if (run != null) {
+            run.setStatus(RunStatus.COMPLETED);
+            run.setFinishedAt(Instant.now());
+            if (active != null) {
+                run.setTotalVisits(active.context().totalVisits().get());
+                run.setSuccessfulVisits(active.context().successfulVisits().get());
+                run.setFailedVisits(active.context().failedVisits().get());
+            }
+            run = campaignRunRepository.save(run);
+            asocksService.cleanupPool("run-" + run.getId());
+            webSocketPublisher.sendStatus(run.getId().toString(), "COMPLETED");
+        }
+
+        log.info("Stopped campaign '{}'", campaign.getName());
+        return run;
+    }
+
+    @Transactional
+    public void pauseCampaign(UUID campaignId) {
+        Campaign campaign = campaignRepository.findById(campaignId)
+            .orElseThrow(() -> new IllegalArgumentException("Campaign not found"));
+
+        if (campaign.getStatus() != CampaignStatus.RUNNING) {
+            throw new IllegalStateException("Campaign is not running (current: " + campaign.getStatus() + ")");
+        }
+
+        ActiveRun active = activeRuns.get(campaignId);
+        if (active == null) {
+            campaign.setStatus(CampaignStatus.COMPLETED);
+            campaignRepository.save(campaign);
+            throw new IllegalStateException("Campaign was lost due to server restart. It has been marked as completed.");
+        }
+
+        active.context().running().set(false);
+        if (active.dispatchThread() != null) active.dispatchThread().interrupt();
+        if (active.stopFuture() != null) active.stopFuture().cancel(false);
+
+        flushStats(active.context());
+
+        campaign.setStatus(CampaignStatus.PAUSED);
+        campaignRepository.save(campaign);
+        webSocketPublisher.sendStatus(active.context().runId().toString(), "PAUSED");
+    }
+
+    @Transactional
+    public void resumeCampaign(UUID campaignId) {
+        Campaign campaign = campaignRepository.findById(campaignId)
+            .orElseThrow(() -> new IllegalArgumentException("Campaign not found"));
+
+        if (campaign.getStatus() != CampaignStatus.PAUSED) {
+            throw new IllegalStateException("Campaign is not paused (current: " + campaign.getStatus() + ")");
+        }
+
+        ActiveRun active = activeRuns.get(campaignId);
+        if (active == null) {
+            campaign.setStatus(CampaignStatus.COMPLETED);
+            campaignRepository.save(campaign);
+            throw new IllegalStateException("Campaign was lost due to server restart. It has been marked as completed.");
+        }
+
+        active.context().running().set(true);
+        campaign.setStatus(CampaignStatus.RUNNING);
+        campaignRepository.save(campaign);
+
+        long elapsedMinutes = Duration.between(active.context().startTime(), Instant.now()).toMinutes();
+        int remainingMinutes = Math.max(1, campaign.getDurationMinutes() - (int) elapsedMinutes);
+        ScheduledFuture<?> stopFuture = globalScheduler.schedule(() -> {
+            try { stopCampaign(campaignId); } catch (Exception e) {
+                log.error("Auto-stop failed for {}", campaignId, e);
+            }
+        }, remainingMinutes, TimeUnit.MINUTES);
+
+        long intervalMs = calculateIntervalMs(campaign);
+        String poolKey = "run-" + active.context().runId();
+        Thread newDispatch = startDispatchLoop(active.context(), poolKey, campaign.getSimulationLevel(), intervalMs);
+
+        activeRuns.put(campaignId, new ActiveRun(active.context(), stopFuture, newDispatch));
+        webSocketPublisher.sendStatus(active.context().runId().toString(), "RUNNING");
+    }
+
+    public SimulationStats getStats(UUID campaignId) {
+        ActiveRun active = activeRuns.get(campaignId);
+        if (active == null) return null;
+
+        var ctx = active.context();
+        Duration elapsed = Duration.between(ctx.startTime(), Instant.now());
+        long seconds = elapsed.getSeconds();
+        double vps = seconds > 0 ? (double) ctx.totalVisits().get() / seconds : 0;
+
+        return new SimulationStats(
+            campaignId.toString(),
+            ctx.runId().toString(),
+            ctx.totalVisits().get(),
+            ctx.successfulVisits().get(),
+            ctx.failedVisits().get(),
+            asocksService.availableProxies("run-" + ctx.runId()),
+            Math.round(vps * 100.0) / 100.0,
+            formatDuration(elapsed),
+            "N/A"
+        );
+    }
+
+    public boolean isRunning(UUID campaignId) {
+        Campaign campaign = campaignRepository.findById(campaignId).orElse(null);
+        return campaign != null && campaign.getStatus() == CampaignStatus.RUNNING;
+    }
+
+    public void shutdown() {
+        log.info("Shutting down simulation engine...");
+        for (var entry : new ArrayList<>(activeRuns.entrySet())) {
+            try {
+                entry.getValue().context().running().set(false);
+                if (entry.getValue().dispatchThread() != null)
+                    entry.getValue().dispatchThread().interrupt();
+                if (entry.getValue().stopFuture() != null)
+                    entry.getValue().stopFuture().cancel(false);
+                entry.getValue().context().visitExecutor().shutdownNow();
+            } catch (Exception e) {
+                log.error("Failed to stop campaign {} during shutdown", entry.getKey(), e);
+            }
+        }
+        activeRuns.clear();
+        globalScheduler.shutdownNow();
+    }
+
+    private void executeVisit(SimulationContext ctx, String poolKey, SimulationLevel level) {
+        GeoDistributionDto geo = pickGeo(ctx.campaign());
         String countryCode = geo != null ? geo.countryCode() : "US";
 
         String proxy = asocksService.acquireProxy(poolKey, countryCode);
@@ -141,30 +289,79 @@ public class SimulationEngine {
             return;
         }
 
-        boolean success = false;
         try {
-            switch (level) {
-                case HTTP_ONLY -> success = httpWorker.visitSimple(
-                    context.campaign(), proxy, countryCode, context);
-                case BROWSER_NAVIGATION -> success = httpWorker.visitWithNavigation(
-                    context.campaign(), proxy, countryCode, context);
-                case FULL_BROWSER -> success = browserWorker.visitFull(
-                    context.campaign(), proxy, countryCode, context);
-            }
+            boolean success = switch (level) {
+                case HTTP_ONLY -> httpWorker.visitSimple(ctx.campaign(), proxy, countryCode, ctx);
+                case BROWSER_NAVIGATION -> httpWorker.visitWithNavigation(ctx.campaign(), proxy, countryCode, ctx);
+                case FULL_BROWSER -> browserWorker.visitFull(ctx.campaign(), proxy, countryCode, ctx);
+            };
 
-            context.totalVisits().incrementAndGet();
-            if (success) {
-                context.successfulVisits().incrementAndGet();
-            } else {
-                context.failedVisits().incrementAndGet();
-            }
+            ctx.totalVisits().incrementAndGet();
+            if (success) ctx.successfulVisits().incrementAndGet();
+            else ctx.failedVisits().incrementAndGet();
 
-            updateRunStats(context);
+            campaignRunRepository.findById(ctx.runId()).ifPresent(run -> {
+                run.setTotalVisits(ctx.totalVisits().get());
+                run.setSuccessfulVisits(ctx.successfulVisits().get());
+                run.setFailedVisits(ctx.failedVisits().get());
+                campaignRunRepository.save(run);
+            });
         } catch (Exception e) {
             log.error("Visit execution failed", e);
-            context.totalVisits().incrementAndGet();
-            context.failedVisits().incrementAndGet();
-            updateRunStats(context);
+            ctx.totalVisits().incrementAndGet();
+            ctx.failedVisits().incrementAndGet();
+        } finally {
+            asocksService.releaseProxy(poolKey, proxy, countryCode);
+        }
+    }
+
+    private Thread startDispatchLoop(SimulationContext ctx, String poolKey,
+                                      SimulationLevel level, long intervalMs) {
+        Thread t = Thread.ofVirtual().unstarted(() -> {
+            java.util.concurrent.atomic.AtomicLong lastFlush = new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
+            while (ctx.running().get()) {
+                Semaphore limit = ctx.concurrencyLimit();
+                if (limit != null && limit.tryAcquire()) {
+                    ctx.visitExecutor().submit(() -> {
+                        try {
+                            executeVisit(ctx, poolKey, level);
+                        } catch (Exception e) {
+                            log.warn("Visit failed: {}", e.getMessage());
+                            ctx.totalVisits().incrementAndGet();
+                            ctx.failedVisits().incrementAndGet();
+                        } finally {
+                            if (limit != null) limit.release();
+                            long now = System.currentTimeMillis();
+                            if (now - lastFlush.get() > 2000) {
+                                webSocketPublisher.sendStats(ctx.runId().toString(), getStats(ctx.campaignId()));
+                                lastFlush.set(now);
+                            }
+                        }
+                    });
+                }
+                try {
+                    Thread.sleep(Math.max(intervalMs, 50));
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        });
+        t.setName("dispatch-" + ctx.campaignId().toString().substring(0, 8));
+        t.start();
+        return t;
+    }
+
+    private void flushStats(SimulationContext ctx) {
+        try {
+            campaignRunRepository.findById(ctx.runId()).ifPresent(run -> {
+                run.setTotalVisits(ctx.totalVisits().get());
+                run.setSuccessfulVisits(ctx.successfulVisits().get());
+                run.setFailedVisits(ctx.failedVisits().get());
+                campaignRunRepository.save(run);
+            });
+            webSocketPublisher.sendStats(ctx.runId().toString(), getStats(ctx.campaignId()));
+        } catch (Exception e) {
+            log.error("Failed to flush stats", e);
         }
     }
 
@@ -188,135 +385,6 @@ public class SimulationEngine {
             return geos.get(geos.size() - 1);
         } catch (Exception e) {
             return new GeoDistributionDto("US", "US", null, 100);
-        }
-    }
-
-    @Transactional
-    public CampaignRun stopCampaign(UUID campaignId) {
-        var context = activeSimulations.remove(campaignId);
-        if (context == null) return null;
-
-        context.running().set(false);
-        context.scheduler().shutdownNow();
-        if (context.stopFuture() != null) {
-            context.stopFuture().cancel(false);
-        }
-
-        Campaign campaign = campaignRepository.findById(campaignId).orElse(null);
-        if (campaign != null) {
-            campaign.setStatus(CampaignStatus.COMPLETED);
-            campaign.setLastRunAt(Instant.now());
-            campaignRepository.save(campaign);
-        }
-
-        CampaignRun run = campaignRunRepository.findById(context.runId()).orElse(null);
-        if (run != null) {
-            run.setStatus(RunStatus.COMPLETED);
-            run.setFinishedAt(Instant.now());
-            run.setTotalVisits(context.totalVisits().get());
-            run.setSuccessfulVisits(context.successfulVisits().get());
-            run.setFailedVisits(context.failedVisits().get());
-            run = campaignRunRepository.save(run);
-        }
-
-        asocksService.cleanupPool("run-" + context.runId());
-
-        webSocketPublisher.sendStatus(context.runId().toString(), "COMPLETED");
-        log.info("Stopped campaign '{}' — {} total, {} ok, {} failed",
-            campaign != null ? campaign.getName() : campaignId,
-            context.totalVisits().get(), context.successfulVisits().get(), context.failedVisits().get());
-
-        return run;
-    }
-
-    @Transactional
-    public void pauseCampaign(UUID campaignId) {
-        var context = activeSimulations.get(campaignId);
-        if (context == null) throw new IllegalStateException("Campaign is not running");
-        context.running().set(false);
-        if (context.stopFuture() != null) context.stopFuture().cancel(false);
-        Campaign campaign = context.campaign();
-        campaign.setStatus(CampaignStatus.PAUSED);
-        campaignRepository.save(campaign);
-        webSocketPublisher.sendStatus(context.runId().toString(), "PAUSED");
-    }
-
-    @Transactional
-    public void resumeCampaign(UUID campaignId) {
-        var context = activeSimulations.get(campaignId);
-        if (context == null) throw new IllegalStateException("Campaign is not paused");
-        context.running().set(true);
-        Campaign campaign = context.campaign();
-        campaign.setStatus(CampaignStatus.RUNNING);
-        campaignRepository.save(campaign);
-
-        int remainingMinutes = campaign.getDurationMinutes();
-        if (context.stopFuture() != null) context.stopFuture().cancel(false);
-        ScheduledFuture<?> stopFuture = globalScheduler.schedule(() -> stopCampaign(campaignId),
-            remainingMinutes, TimeUnit.MINUTES);
-
-        var newContext = new SimulationContext(
-            context.campaignId(), context.runId(), context.campaign(), context.run(),
-            context.scheduler(), context.running(),
-            context.totalVisits(), context.successfulVisits(), context.failedVisits(),
-            context.startTime(), stopFuture
-        );
-        activeSimulations.put(campaignId, newContext);
-
-        webSocketPublisher.sendStatus(context.runId().toString(), "RUNNING");
-    }
-
-    public SimulationStats getStats(UUID campaignId) {
-        var context = activeSimulations.get(campaignId);
-        if (context == null) return null;
-
-        Duration elapsed = Duration.between(context.startTime(), Instant.now());
-        long seconds = elapsed.getSeconds();
-        double vps = seconds > 0 ? (double) context.totalVisits().get() / seconds : 0;
-        int available = asocksService.availableProxies("run-" + context.runId());
-
-        return new SimulationStats(
-            campaignId.toString(),
-            context.runId().toString(),
-            context.totalVisits().get(),
-            context.successfulVisits().get(),
-            context.failedVisits().get(),
-            available,
-            Math.round(vps * 100.0) / 100.0,
-            formatDuration(elapsed),
-            "N/A"
-        );
-    }
-
-    public boolean isRunning(UUID campaignId) {
-        var ctx = activeSimulations.get(campaignId);
-        return ctx != null && ctx.running().get();
-    }
-
-    public void shutdown() {
-        log.info("Shutting down simulation engine...");
-        new ArrayList<>(activeSimulations.keySet()).forEach(id -> {
-            try {
-                stopCampaign(id);
-            } catch (Exception e) {
-                log.error("Failed to stop campaign {} during shutdown", id, e);
-            }
-        });
-        globalScheduler.shutdownNow();
-    }
-
-    private void updateRunStats(SimulationContext context) {
-        try {
-            CampaignRun run = campaignRunRepository.findById(context.runId()).orElse(null);
-            if (run != null) {
-                run.setTotalVisits(context.totalVisits().get());
-                run.setSuccessfulVisits(context.successfulVisits().get());
-                run.setFailedVisits(context.failedVisits().get());
-                campaignRunRepository.save(run);
-            }
-            webSocketPublisher.sendStats(context.runId().toString(), getStats(context.campaignId()));
-        } catch (Exception e) {
-            log.error("Failed to update run stats", e);
         }
     }
 

@@ -12,6 +12,57 @@ export interface Site {
   baseUrl: string;
 }
 
+export interface NavigationStep {
+  selector: string;
+  text: string;
+  waitAfterMs: number;
+}
+
+export interface ClickTarget {
+  selector: string;
+  text: string;
+  tag: string;
+  pagePath: string;
+  navigationSteps: NavigationStep[];
+  probability: number;
+  delayBeforeMs: number;
+  delayAfterMs: number;
+}
+
+export interface DiscoveredElement {
+  selector: string;
+  text: string;
+  tag: string;
+  href: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PageState {
+  id: string;
+  label: string;
+  screenshot: string;
+  elements: DiscoveredElement[];
+  pageWidth: number;
+  pageHeight: number;
+}
+
+export interface SitePreview {
+  states: PageState[];
+}
+
+export interface SessionState {
+  sessionId: string;
+  screenshot: string;
+  elements: DiscoveredElement[];
+  currentUrl: string;
+  currentPath: NavigationStep[];
+  pageWidth: number;
+  pageHeight: number;
+}
+
 export interface Campaign {
   id: string;
   userId: string;
@@ -29,6 +80,7 @@ export interface Campaign {
   deviceProfile: DeviceProfile[];
   userAgentConfig: UserAgentConfig;
   proxyConfig: ProxyConfig;
+  clickTargets: ClickTarget[];
   scenarios: CampaignScenarioDto[];
   createdAt: string;
   updatedAt: string;

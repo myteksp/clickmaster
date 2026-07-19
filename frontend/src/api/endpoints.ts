@@ -6,6 +6,8 @@ import type {
   CampaignRun,
   Scenario,
   SimulationStats,
+  SitePreview,
+  SessionState,
 } from './types';
 
 export const authApi = {
@@ -22,6 +24,14 @@ export const sitesApi = {
   create: (data: Partial<Site>) => api.post<Site>('/sites', data),
   update: (id: string, data: Partial<Site>) => api.put<Site>(`/sites/${id}`, data),
   delete: (id: string) => api.delete(`/sites/${id}`),
+  discoverElements: (id: string) => api.post<SitePreview>(`/sites/${id}/discover-elements`),
+  startSession: (id: string) => api.post<SessionState>(`/sites/${id}/session/start`),
+  sessionClick: (id: string, sessionId: string, selector: string, text: string) =>
+    api.post<SessionState>(`/sites/${id}/session/${sessionId}/click`, { selector, text }),
+  sessionBack: (id: string, sessionId: string) =>
+    api.post<SessionState>(`/sites/${id}/session/${sessionId}/back`),
+  closeSession: (id: string, sessionId: string) =>
+    api.delete(`/sites/${id}/session/${sessionId}`),
 };
 
 export const campaignsApi = {

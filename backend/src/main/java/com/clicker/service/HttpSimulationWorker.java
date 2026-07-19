@@ -162,8 +162,12 @@ public class HttpSimulationWorker {
     }
 
     private OkHttpClient buildHttpClient(String proxyUrl, OrganicProfile profile, CookieSession cookies) {
-        String host = "localhost";
-        int port = 80;
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            throw new IllegalArgumentException("No proxy provided — refusing to send traffic from server IP");
+        }
+
+        String host;
+        int port;
         String proxyUser = null;
         String proxyPass = null;
 
@@ -184,7 +188,7 @@ public class HttpSimulationWorker {
                 port = parts.length > 1 ? Integer.parseInt(parts[1]) : 80;
             }
         } catch (Exception e) {
-            return baseClient(cookies);
+            throw new IllegalArgumentException("Failed to parse proxy URL: " + proxyUrl, e);
         }
 
         final String finalUser = proxyUser;
@@ -212,7 +216,7 @@ public class HttpSimulationWorker {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)
             .followRedirects(true)
-            .followSslRedirects(true)
+            .followSslRedirects(false)
             .cookieJar(cookies)
             .protocols(List.of(Protocol.HTTP_2, Protocol.HTTP_1_1))  // Prefer H2 like real browsers
             .build();

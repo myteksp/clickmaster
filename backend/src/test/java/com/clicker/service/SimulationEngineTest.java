@@ -81,6 +81,7 @@ class SimulationEngineTest {
             List.of(),
             new UserAgentConfigDto("RANDOM", List.of()),
             new ProxyConfigDto("ASOCKS"),
+            List.of(),
             List.of()
         ), userId);
 
@@ -109,6 +110,7 @@ class SimulationEngineTest {
             List.of(),
             new UserAgentConfigDto("RANDOM", List.of()),
             new ProxyConfigDto("ASOCKS"),
+            List.of(),
             List.of()
         ), userId);
 
@@ -146,6 +148,7 @@ class SimulationEngineTest {
             List.of(),
             new UserAgentConfigDto("RANDOM", List.of()),
             new ProxyConfigDto("ASOCKS"),
+            List.of(),
             List.of()
         ), userId);
 
@@ -165,6 +168,7 @@ class SimulationEngineTest {
             List.of(),
             new UserAgentConfigDto("RANDOM", List.of()),
             new ProxyConfigDto("ASOCKS"),
+            List.of(),
             List.of()
         ), userId);
 
@@ -186,6 +190,7 @@ class SimulationEngineTest {
             List.of(),
             new UserAgentConfigDto("RANDOM", List.of()),
             new ProxyConfigDto("ASOCKS"),
+            List.of(),
             List.of()
         ), userId);
 

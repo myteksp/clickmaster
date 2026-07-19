@@ -18,5 +18,6 @@ public record CampaignCreateRequest(
     List<DeviceProfileDto> deviceProfile,
     UserAgentConfigDto userAgentConfig,
     ProxyConfigDto proxyConfig,
+    List<ClickTargetDto> clickTargets,
     List<CampaignScenarioLink> scenarios
 ) {}

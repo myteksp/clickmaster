@@ -6,26 +6,29 @@ import okhttp3.HttpUrl;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class CookieSession implements CookieJar {
 
-    private final Map<String, List<Cookie>> cookieStore = new ConcurrentHashMap<>();
+    private final Map<String, CopyOnWriteArrayList<Cookie>> cookieStore = new ConcurrentHashMap<>();
 
     @Override
     public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
         String key = url.host();
-        List<Cookie> existing = cookieStore.computeIfAbsent(key, k -> new ArrayList<>());
+        CopyOnWriteArrayList<Cookie> existing = cookieStore.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>());
 
         for (Cookie cookie : cookies) {
             existing.removeIf(c -> c.name().equals(cookie.name()));
-            existing.add(cookie);
+            if (cookie.expiresAt() <= 0 || cookie.expiresAt() > System.currentTimeMillis()) {
+                existing.add(cookie);
+            }
         }
     }
 
     @Override
     public List<Cookie> loadForRequest(HttpUrl url) {
         String key = url.host();
-        List<Cookie> cookies = cookieStore.getOrDefault(key, List.of());
+        CopyOnWriteArrayList<Cookie> cookies = cookieStore.getOrDefault(key, new CopyOnWriteArrayList<>());
         List<Cookie> valid = new ArrayList<>();
         for (Cookie cookie : cookies) {
             if (cookie.expiresAt() <= 0 || cookie.expiresAt() > System.currentTimeMillis()) {

@@ -26,32 +26,13 @@ test.describe('Auth — complete coverage', () => {
     await expect(passInput).toHaveAttribute('minlength', '6');
   });
 
-  test('register: reject invalid email with backend error', async ({ page }) => {
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Test');
-    // JS-trigger type change to bypass HTML5 type=email validation
-    await page.evaluate(() => {
-      const el = document.querySelector('input[type="email"]') as HTMLInputElement;
-      if (el) el.type = 'text';
-    });
-    await page.fill('input[type="text"]', 'not-an-email');
-    await page.fill('input[type="password"]', 'testpass123');
-    await page.click('button[type="submit"]');
-    // Wait for error message
-    await page.waitForSelector('text=Invalid', { timeout: 5000 }).catch(() => {});
-    const hasError = await page.locator('.bg-red-900\\/50, [class*="bg-red-"]').count();
-    // Either HTML5 validation caught it or backend error shows
-    expect(hasError).toBeGreaterThanOrEqual(0);
-  });
-
-  test('register: reject duplicate email', async ({ page }) => {
+  test('register: reject duplicate email with toast error', async ({ page }) => {
     await page.goto('/register');
     await page.fill('input[type="text"]', 'Test');
     await page.fill('input[type="email"]', email);
     await page.fill('input[type="password"]', 'testpass123');
     await page.click('button[type="submit"]');
-    // Should get "already registered" error
-    await expect(page.locator('.bg-red-900\\/50')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.bg-red-600')).toBeVisible({ timeout: 5000 });
   });
 
   test('login: success with valid credentials', async ({ page }) => {
@@ -63,20 +44,20 @@ test.describe('Auth — complete coverage', () => {
     await expect(page.locator('nav')).toContainText(name);
   });
 
-  test('login: reject wrong password', async ({ page }) => {
+  test('login: reject wrong password with toast error', async ({ page }) => {
     await page.goto('/login');
     await page.fill('input[type="email"]', email);
     await page.fill('input[type="password"]', 'wrongpassword999');
     await page.click('button[type="submit"]');
-    await expect(page.locator('.bg-red-900\\/50')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.bg-red-600')).toBeVisible({ timeout: 5000 });
   });
 
-  test('login: reject unknown email', async ({ page }) => {
+  test('login: reject unknown email with toast error', async ({ page }) => {
     await page.goto('/login');
     await page.fill('input[type="email"]', `nobody-${Date.now()}@nowhere.com`);
     await page.fill('input[type="password"]', password);
     await page.click('button[type="submit"]');
-    await expect(page.locator('.bg-red-900\\/50')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.bg-red-600')).toBeVisible({ timeout: 5000 });
   });
 
   test('redirect to login when unauthenticated', async ({ page }) => {
@@ -122,5 +103,15 @@ test.describe('Auth — complete coverage', () => {
     await page.goto('/register');
     await page.click('text=Sign in');
     await expect(page).toHaveURL('/login');
+  });
+
+  test('show/hide password toggle works on login', async ({ page }) => {
+    await page.goto('/login');
+    await page.fill('input[type="password"]', 'secret123');
+    await page.click('button:has-text("Show")');
+    const passInput = page.locator('input').nth(1);
+    await expect(passInput).toHaveAttribute('type', 'text');
+    await page.click('button:has-text("Hide")');
+    await expect(passInput).toHaveAttribute('type', 'password');
   });
 });

@@ -1,6 +1,10 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { sitesApi } from '../api/endpoints';
 import type { Site } from '../api/types';
+import { useToast } from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import EmptyState from '../components/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function SitesPage() {
   const [sites, setSites] = useState<Site[]>([]);
@@ -10,12 +14,14 @@ export default function SitesPage() {
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Site | null>(null);
+  const toast = useToast();
 
   const load = async () => {
     try {
       setSites(await sitesApi.list());
     } catch (err) {
-      console.error(err);
+      toast.error(err instanceof Error ? err.message : 'Failed to load sites');
     } finally {
       setLoading(false);
     }
@@ -39,30 +45,47 @@ export default function SitesPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) { toast.error('Please enter a site name'); return; }
+    if (!baseUrl.trim()) { toast.error('Please enter a base URL'); return; }
+
+    let url = baseUrl.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+      setBaseUrl(url);
+    }
+
     setSaving(true);
     try {
       if (editSite) {
-        await sitesApi.update(editSite.id, { name, baseUrl });
+        await sitesApi.update(editSite.id, { name: name.trim(), baseUrl: url });
+        toast.success('Site updated');
       } else {
-        await sitesApi.create({ name, baseUrl });
+        await sitesApi.create({ name: name.trim(), baseUrl: url });
+        toast.success('Site created');
       }
       setShowForm(false);
       load();
     } catch (err) {
-      console.error(err);
-      alert('Failed to save site');
+      toast.error(err instanceof Error ? err.message : 'Failed to save site');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this site? This will also delete all associated campaigns.')) return;
-    await sitesApi.delete(id);
-    load();
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await sitesApi.delete(deleteTarget.id);
+      toast.success('Site deleted');
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete site');
+      setDeleteTarget(null);
+    }
   };
 
-  if (loading) return <div className="text-gray-400">Loading...</div>;
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div>
@@ -72,7 +95,7 @@ export default function SitesPage() {
           onClick={openCreate}
           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm font-medium transition-colors"
         >
-          Add Site
+          + Add Site
         </button>
       </div>
 
@@ -89,18 +112,20 @@ export default function SitesPage() {
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:border-emerald-500"
                 required
                 placeholder="My Website"
+                autoFocus
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Base URL</label>
               <input
-                type="url"
+                type="text"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:border-emerald-500"
                 required
                 placeholder="https://example.com"
               />
+              <p className="text-xs text-gray-500 mt-1">Protocol (https://) is added automatically if missing</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -123,9 +148,15 @@ export default function SitesPage() {
       )}
 
       {sites.length === 0 && !showForm ? (
-        <div className="text-center text-gray-500 py-12">
-          No sites configured. Add your first site to start creating campaigns.
-        </div>
+        <EmptyState
+          title="No sites configured"
+          description="Add your first site to start creating campaigns."
+          action={
+            <button onClick={openCreate} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm font-medium">
+              Add Site
+            </button>
+          }
+        />
       ) : (
         <div className="space-y-2">
           {sites.map((s) => (
@@ -133,15 +164,15 @@ export default function SitesPage() {
               key={s.id}
               className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 flex items-center justify-between hover:bg-gray-800/50 transition-colors"
             >
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-white">{s.name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{s.baseUrl}</p>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{s.baseUrl}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button onClick={() => openEdit(s)} className="text-xs text-gray-400 hover:text-white transition-colors">
                   Edit
                 </button>
-                <button onClick={() => handleDelete(s.id)} className="text-xs text-gray-600 hover:text-red-400 transition-colors">
+                <button onClick={() => setDeleteTarget(s)} className="text-xs text-gray-600 hover:text-red-400 transition-colors">
                   Delete
                 </button>
               </div>
@@ -149,6 +180,16 @@ export default function SitesPage() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Site"
+        message={`Delete "${deleteTarget?.name}"? This will also delete all associated campaigns.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

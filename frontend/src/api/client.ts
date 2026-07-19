@@ -1,5 +1,23 @@
 const API_BASE = '/api';
 
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public body: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  unauthorizedHandler = handler;
+}
+
 interface ApiOptions extends RequestInit {
   params?: Record<string, string>;
 }
@@ -23,6 +41,21 @@ class ApiClient {
     return this.token;
   }
 
+  private parseErrorMessage(body: string, status: number): string {
+    try {
+      const json = JSON.parse(body);
+      if (json.message) return json.message;
+      if (json.error) return json.error;
+      if (json.errors && Array.isArray(json.errors)) {
+        return json.errors.map((e: { field?: string; message?: string }) => `${e.field || ''}: ${e.message || ''}`).join(', ');
+      }
+      return body || `HTTP ${status}`;
+    } catch {
+      if (body && body.length < 200) return body;
+      return `HTTP ${status}`;
+    }
+  }
+
   private async request<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
     const { params, ...fetchOptions } = options;
     let url = `${API_BASE}${endpoint}`;
@@ -42,21 +75,34 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
-      ...fetchOptions,
-      headers,
-    });
+    const response = await fetch(url, { ...fetchOptions, headers });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || `HTTP ${response.status}`);
+      const body = await response.text();
+      const message = this.parseErrorMessage(body, response.status);
+
+      if (response.status === 401) {
+        this.setToken(null);
+        if (unauthorizedHandler) unauthorizedHandler();
+      }
+
+      throw new ApiError(response.status, body, message);
     }
 
     if (response.status === 204) {
       return undefined as T;
     }
 
-    return response.json();
+    const text = await response.text();
+    if (!text || text.trim().length === 0) {
+      return undefined as T;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return undefined as T;
+    }
   }
 
   get<T>(endpoint: string, params?: Record<string, string>) {

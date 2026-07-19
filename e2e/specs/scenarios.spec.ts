@@ -196,9 +196,9 @@ test.describe('Scenarios — complete coverage', () => {
     await page.click('button:has-text("Create Scenario")');
     await expect(page).toHaveURL('/scenarios');
 
-    page.on('dialog', dialog => dialog.accept());
     await page.click('button:has-text("Delete")');
-    await expect(page.locator('text=Kill Me')).not.toBeVisible();
+    await page.locator('.fixed button:has-text("Delete")').click();
+    await expect(page.getByText('Kill Me', { exact: true })).not.toBeVisible();
   });
 
   test('create multiple scenarios, verify all visible', async ({ page }) => {

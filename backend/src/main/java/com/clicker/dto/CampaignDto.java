@@ -22,6 +22,7 @@ public record CampaignDto(
     List<DeviceProfileDto> deviceProfile,
     UserAgentConfigDto userAgentConfig,
     ProxyConfigDto proxyConfig,
+    List<ClickTargetDto> clickTargets,
     List<CampaignScenarioDto> scenarios,
     Instant createdAt,
     Instant updatedAt,
