@@ -290,13 +290,22 @@ public class BrowserSimulationWorker {
 
                         page.waitForTimeout(step.waitAfterMs() > 0 ? step.waitAfterMs() : 2000);
 
-                        // If the page URL changed, wait for the new page to load
+                        // If the page URL changed, wait for the new page + iframes to load
                         String urlAfter = page.url();
                         if (!urlBefore.equals(urlAfter)) {
                             try {
                                 page.waitForLoadState(LoadState.DOMCONTENTLOADED,
                                     new Page.WaitForLoadStateOptions().setTimeout(10000));
                             } catch (Exception ignored) {}
+                            // Wait for child iframes to load their content
+                            for (Frame frame : page.frames()) {
+                                if (frame.equals(page.mainFrame())) continue;
+                                try {
+                                    frame.waitForLoadState(LoadState.DOMCONTENTLOADED,
+                                        new Frame.WaitForLoadStateOptions().setTimeout(5000));
+                                } catch (Exception ignored) {}
+                            }
+                            page.waitForTimeout(2000);
                             log.info("Navigation step: clicked '{}' → navigated to {}", step.text(),
                                 urlAfter.substring(0, Math.min(80, urlAfter.length())));
                         } else {
