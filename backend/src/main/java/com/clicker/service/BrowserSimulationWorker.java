@@ -5,6 +5,7 @@ import com.clicker.dto.ClickTargetDto;
 import com.clicker.repository.VisitEventRepository;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.Geolocation;
+import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.Proxy;
 import com.microsoft.playwright.options.ScreenshotType;
 import com.microsoft.playwright.options.WaitUntilState;
@@ -564,25 +565,66 @@ public class BrowserSimulationWorker {
 
     @SuppressWarnings("unchecked")
     private List<DiscoveredElement> extractElements(Page page) {
-        Object result = page.evaluate(ELEMENT_DISCOVERY_JS);
         List<DiscoveredElement> elements = new ArrayList<>();
+
+        Object result = page.evaluate(ELEMENT_DISCOVERY_JS);
         if (result instanceof List<?> list) {
             for (Object item : list) {
                 if (item instanceof Map<?, ?> map) {
-                    elements.add(new DiscoveredElement(
-                        String.valueOf(map.get("selector")),
-                        String.valueOf(map.get("text")),
-                        String.valueOf(map.get("tag")),
-                        String.valueOf(map.get("href")),
-                        (int) map.get("x"),
-                        (int) map.get("y"),
-                        (int) map.get("width"),
-                        (int) map.get("height")
-                    ));
+                    elements.add(toDiscoveredElement(map));
                 }
             }
         }
+
+        for (Frame frame : page.frames()) {
+            if (frame.equals(page.mainFrame())) continue;
+            try {
+                String frameUrl = frame.url();
+                if (frameUrl == null || frameUrl.isEmpty() || frameUrl.equals("about:blank")) continue;
+
+                ElementHandle frameElement = (ElementHandle) page.evaluate(
+                    "(url) => { const f = document.querySelector('iframe[src*=\"' + new URL(url).hostname + '\"]'); return f; }",
+                    frameUrl);
+
+                int offsetX = 0, offsetY = 0;
+                if (frameElement != null) {
+                    try {
+                        var bb = frameElement.boundingBox();
+                        if (bb != null) { offsetX = (int) bb.x; offsetY = (int) bb.y; }
+                    } catch (Exception ignored) {}
+                }
+
+                Object frameResult = frame.evaluate(ELEMENT_DISCOVERY_JS);
+                if (frameResult instanceof List<?> frameList) {
+                    for (Object item : frameList) {
+                        if (item instanceof Map<?, ?> map) {
+                            var el = toDiscoveredElement(map);
+                            elements.add(new DiscoveredElement(
+                                el.selector(), "[iframe] " + el.text(), el.tag(),
+                                el.href(),
+                                el.x() + offsetX, el.y() + offsetY,
+                                el.width(), el.height()
+                            ));
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
         return elements;
+    }
+
+    private DiscoveredElement toDiscoveredElement(Map<?, ?> map) {
+        return new DiscoveredElement(
+            String.valueOf(map.get("selector")),
+            String.valueOf(map.get("text")),
+            String.valueOf(map.get("tag")),
+            String.valueOf(map.get("href")),
+            (int) map.get("x"),
+            (int) map.get("y"),
+            (int) map.get("width"),
+            (int) map.get("height")
+        );
     }
 
     private void scrollThroughPage(Page page) {
