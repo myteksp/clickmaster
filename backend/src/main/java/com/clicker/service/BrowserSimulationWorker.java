@@ -354,6 +354,16 @@ public class BrowserSimulationWorker {
     }
 
     private boolean clickElementInPageOrFrames(Page page, String selector) {
+        // Log current frames for debugging
+        List<Frame> frames = page.frames();
+        if (frames.size() > 1) {
+            for (Frame f : frames) {
+                if (!f.equals(page.mainFrame())) {
+                    log.info("Frame available: {}", f.url().substring(0, Math.min(60, f.url().length())));
+                }
+            }
+        }
+
         try {
             Locator mainLocator = page.locator(selector).first();
             if (mainLocator.count() > 0) {
