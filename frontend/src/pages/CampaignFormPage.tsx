@@ -314,8 +314,8 @@ export default function CampaignFormPage() {
           </div>
           <div className="text-xs text-gray-500 pt-2 border-t border-gray-800">
             Est. total: <span className="text-gray-300 font-medium">~{Math.round(visitsPerHour * (durationMinutes / 60))} visits</span>
-            {simulationLevel === 'FULL_BROWSER' && visitsPerHour > 200 && (
-              <span className="text-yellow-500 ml-2">{'\u26A0'} Full Browser is limited to ~200/h on a single machine</span>
+            {simulationLevel === 'FULL_BROWSER' && visitsPerHour > 2000 && (
+              <span className="text-yellow-500 ml-2">{'\u26A0'} Full Browser max throughput is ~2500/h on this server</span>
             )}
           </div>
         </div>
