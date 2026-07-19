@@ -273,22 +273,40 @@ public class BrowserSimulationWorker {
         for (ClickTargetDto target : targets) {
             try {
                 int prob = target.probability();
-                if (prob <= 0 || ThreadLocalRandom.current().nextInt(100) >= prob) continue;
+                if (prob <= 0 || ThreadLocalRandom.current().nextInt(100) >= prob) {
+                    log.info("Click target skipped (probability {}%): '{}'", prob, target.text());
+                    continue;
+                }
 
+                // Replay navigation steps to reach the target
                 if (target.navigationSteps() != null && !target.navigationSteps().isEmpty()) {
                     for (NavigationStepDto step : target.navigationSteps()) {
-                        try {
-                            clickElementInPageOrFrames(page, step.selector());
-                            page.waitForTimeout(step.waitAfterMs() > 0 ? step.waitAfterMs() : 2000);
-                            currentUrl = page.url();
-                            log.info("Navigation step: clicked '{}'", step.text());
-                        } catch (Exception e) {
-                            log.warn("Navigation step failed: '{}' - {}", step.text(), e.getMessage());
+                        String urlBefore = page.url();
+                        boolean clicked = clickElementInPageOrFrames(page, step.selector());
+                        if (!clicked) {
+                            log.warn("Navigation step element not found: '{}' ({})", step.text(), step.selector());
+                            continue;
                         }
+
+                        page.waitForTimeout(step.waitAfterMs() > 0 ? step.waitAfterMs() : 2000);
+
+                        // If the page URL changed, wait for the new page to load
+                        String urlAfter = page.url();
+                        if (!urlBefore.equals(urlAfter)) {
+                            try {
+                                page.waitForLoadState(LoadState.DOMCONTENTLOADED,
+                                    new Page.WaitForLoadStateOptions().setTimeout(10000));
+                            } catch (Exception ignored) {}
+                            log.info("Navigation step: clicked '{}' → navigated to {}", step.text(),
+                                urlAfter.substring(0, Math.min(80, urlAfter.length())));
+                        } else {
+                            log.info("Navigation step: clicked '{}' (same page)", step.text());
+                        }
+                        currentUrl = page.url();
                     }
                 } else if (target.pagePath() != null && !target.pagePath().isEmpty() && !target.pagePath().equals("home")) {
                     String targetUrl = baseUrl.replaceAll("/+$", "") + target.pagePath();
-                    if (!currentUrl.equals(targetUrl)) {
+                    if (!currentUrl.equals(targetUrl) && !target.pagePath().startsWith("http")) {
                         page.navigate(targetUrl, new Page.NavigateOptions()
                             .setTimeout(15000)
                             .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
@@ -297,25 +315,44 @@ public class BrowserSimulationWorker {
                     }
                 }
 
-                clickElementInPageOrFrames(page, target.selector());
-                currentUrl = page.url();
-                log.info("Click target executed: '{}'", target.text());
+                // Click the target element
+                String urlBefore = page.url();
+                boolean clicked = clickElementInPageOrFrames(page, target.selector());
+                if (!clicked) {
+                    log.warn("Click target not found: '{}' ({})", target.text(), target.selector());
+                    page.waitForTimeout(target.delayAfterMs() > 0 ? target.delayAfterMs() : 2000);
+                    continue;
+                }
+
                 page.waitForTimeout(target.delayAfterMs() > 0 ? target.delayAfterMs() : 2000);
+
+                String urlAfter = page.url();
+                if (!urlBefore.equals(urlAfter)) {
+                    try {
+                        page.waitForLoadState(LoadState.DOMCONTENTLOADED,
+                            new Page.WaitForLoadStateOptions().setTimeout(10000));
+                    } catch (Exception ignored) {}
+                    log.info("Click target executed: '{}' → page navigated to {}", target.text(),
+                        urlAfter.substring(0, Math.min(80, urlAfter.length())));
+                } else {
+                    log.info("Click target executed: '{}' (page stayed)", target.text());
+                }
+                currentUrl = page.url();
             } catch (Exception e) {
                 log.warn("Click target failed: '{}' - {}", target.text(), e.getMessage());
             }
         }
     }
 
-    private void clickElementInPageOrFrames(Page page, String selector) {
+    private boolean clickElementInPageOrFrames(Page page, String selector) {
         try {
             Locator mainLocator = page.locator(selector).first();
             if (mainLocator.count() > 0) {
                 mainLocator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
-                page.waitForTimeout(1000);
+                page.waitForTimeout(500);
                 moveMouseTrusted(page);
                 mainLocator.click(new Locator.ClickOptions().setTimeout(5000));
-                return;
+                return true;
             }
         } catch (Exception ignored) {}
 
@@ -325,13 +362,13 @@ public class BrowserSimulationWorker {
                 Locator frameLocator = frame.locator(selector).first();
                 if (frameLocator.count() > 0) {
                     frameLocator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
-                    page.waitForTimeout(1000);
+                    page.waitForTimeout(500);
                     frameLocator.click(new Locator.ClickOptions().setTimeout(5000));
-                    return;
+                    return true;
                 }
             } catch (Exception ignored) {}
         }
-        log.warn("Element not found in page or frames: {}", selector);
+        return false;
     }
 
     private void clickRandomLink(Page page, String baseUrl) {
