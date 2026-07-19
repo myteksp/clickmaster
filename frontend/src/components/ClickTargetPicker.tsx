@@ -10,6 +10,14 @@ interface ClickTargetPickerProps {
 }
 
 type Mode = 'navigate' | 'select';
+type LoadPhase = 'connecting' | 'loading' | 'scanning' | 'iframes';
+
+const phaseMessages: Record<LoadPhase, { icon: string; text: string }> = {
+  connecting: { icon: '🌐', text: 'Connecting to site...' },
+  loading: { icon: '📄', text: 'Loading page content...' },
+  scanning: { icon: '🔍', text: 'Scrolling through page to find all elements...' },
+  iframes: { icon: '🔌', text: 'Scanning partner widgets and iframes...' },
+};
 
 export default function ClickTargetPicker({ siteId, targets, onChange }: ClickTargetPickerProps) {
   const [session, setSession] = useState<SessionState | null>(null);
@@ -17,6 +25,7 @@ export default function ClickTargetPicker({ siteId, targets, onChange }: ClickTa
   const [navigating, setNavigating] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [mode, setMode] = useState<Mode>('navigate');
+  const [loadPhase, setLoadPhase] = useState<LoadPhase>('connecting');
   const [hoveredEl, setHoveredEl] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const imgRef = useRef<HTMLImageElement>(null);
@@ -55,14 +64,26 @@ export default function ClickTargetPicker({ siteId, targets, onChange }: ClickTa
 
   const openPicker = async () => {
     setLoading(true);
+    setLoadPhase('connecting');
+    
+    // Animate phases while waiting
+    const phases: LoadPhase[] = ['connecting', 'loading', 'scanning', 'iframes'];
+    let phaseIdx = 0;
+    const phaseTimer = setInterval(() => {
+      phaseIdx = Math.min(phaseIdx + 1, phases.length - 1);
+      setLoadPhase(phases[phaseIdx]);
+    }, 3000);
+
     try {
       const state = await sitesApi.startSession(siteId);
+      clearInterval(phaseTimer);
       setSession(state);
       setMode('navigate');
       setShowPicker(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to start session');
     } finally {
+      clearInterval(phaseTimer);
       setLoading(false);
     }
   };
@@ -152,11 +173,37 @@ export default function ClickTargetPicker({ siteId, targets, onChange }: ClickTa
           disabled={loading || !siteId}
           className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 disabled:opacity-50"
         >
-          {loading ? 'Starting session...' : '🔍 Open Interactive Picker'}
+          {loading ? 'Loading...' : '🔍 Open Interactive Picker'}
         </button>
         <p className="text-xs text-gray-500 mt-1.5">
           Navigate the live site, click through tabs, and select elements as click targets. Targets behind multiple clicks are fully supported.
         </p>
+
+        {loading && (
+          <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+            <div className="flex flex-col items-center gap-4 max-w-sm">
+              <div className="w-12 h-12 border-3 border-gray-700 border-t-emerald-500 rounded-full animate-spin" style={{ borderWidth: '3px' }} />
+              <div className="text-center">
+                <div className="text-3xl mb-2">{phaseMessages[loadPhase].icon}</div>
+                <p className="text-sm text-white font-medium">{phaseMessages[loadPhase].text}</p>
+                <p className="text-xs text-gray-500 mt-1">This usually takes 10-15 seconds</p>
+              </div>
+              <div className="flex gap-1.5">
+                {(['connecting', 'loading', 'scanning', 'iframes'] as LoadPhase[]).map((p, i) => {
+                  const activeIdx = (['connecting', 'loading', 'scanning', 'iframes'] as LoadPhase[]).indexOf(loadPhase);
+                  return (
+                    <div
+                      key={p}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        i <= activeIdx ? 'bg-emerald-500' : 'bg-gray-700'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -289,7 +336,15 @@ export default function ClickTargetPicker({ siteId, targets, onChange }: ClickTa
             </div>
 
             {/* Screenshot + overlays */}
-            <div className="overflow-auto flex-1 p-4">
+            <div className="overflow-auto flex-1 p-4 relative">
+              {navigating && (
+                <div className="absolute inset-0 z-10 bg-gray-900/80 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-gray-700 border-t-emerald-500 rounded-full animate-spin" />
+                    <p className="text-xs text-gray-400">Loading page...</p>
+                  </div>
+                </div>
+              )}
               <div className="relative inline-block">
                 <img
                   ref={imgRef}

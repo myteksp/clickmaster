@@ -644,33 +644,27 @@ public class BrowserSimulationWorker {
     private void scrollThroughPage(Page page) {
         try {
             page.evaluate("() => window.scrollTo(0, 0)");
-            page.waitForTimeout(1000);
+            page.waitForTimeout(500);
 
             int viewportHeight = (int) page.evaluate("() => window.innerHeight");
 
-            for (int i = 0; i < 30; i++) {
-                int target = (int)(viewportHeight * 0.7 * (i + 1));
+            for (int i = 0; i < 15; i++) {
+                int target = (int)(viewportHeight * 0.8 * (i + 1));
                 page.evaluate("(p) => window.scrollTo(0, p)", target);
-                page.waitForTimeout(600);
+                page.waitForTimeout(300);
             }
 
             page.evaluate("() => window.scrollTo(0, 0)");
-            page.waitForTimeout(3000);
-
-            try {
-                page.waitForLoadState(LoadState.NETWORKIDLE,
-                    new Page.WaitForLoadStateOptions().setTimeout(5000));
-            } catch (Exception ignored) {}
+            page.waitForTimeout(1000);
 
             for (Frame frame : page.frames()) {
                 if (frame.equals(page.mainFrame())) continue;
                 try {
                     frame.waitForLoadState(LoadState.DOMCONTENTLOADED,
-                        new Frame.WaitForLoadStateOptions().setTimeout(8000));
-                    log.info("Frame loaded: {}", frame.url());
+                        new Frame.WaitForLoadStateOptions().setTimeout(4000));
                 } catch (Exception ignored) {}
             }
-            page.waitForTimeout(1000);
+            page.waitForTimeout(500);
         } catch (Exception ignored) {}
     }
 
