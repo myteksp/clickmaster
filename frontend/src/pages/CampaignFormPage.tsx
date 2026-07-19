@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { campaignsApi, sitesApi, scenariosApi, asocksApi } from '../api/endpoints';
 import type { Site, Scenario, Campaign, ClickTarget } from '../api/types';
@@ -48,11 +48,13 @@ export default function CampaignFormPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const isEdit = !!id;
+  const STORAGE_KEY = `campaign-form-${id || 'new'}`;
+  const restoredRef = useRef(false);
 
   const [sites, setSites] = useState<Site[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [countries, setCountries] = useState(POPULAR_COUNTRIES);
-  const [loading, setLoading] = useState(isEdit);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const [name, setName] = useState('');
@@ -65,12 +67,53 @@ export default function CampaignFormPage() {
   const [selectedScenarios, setSelectedScenarios] = useState<{ scenarioId: string; entryUrl: string; weight: number }[]>([]);
   const [clickTargets, setClickTargets] = useState<ClickTarget[]>([]);
 
+  // Restore from sessionStorage on first mount
+  useEffect(() => {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const d = JSON.parse(saved);
+        if (d.name) setName(d.name);
+        if (d.siteId) setSiteId(d.siteId);
+        if (d.simulationLevel) setSimulationLevel(d.simulationLevel);
+        if (d.trafficPattern) setTrafficPattern(d.trafficPattern);
+        if (d.visitsPerHour) setVisitsPerHour(d.visitsPerHour);
+        if (d.durationMinutes) setDurationMinutes(d.durationMinutes);
+        if (d.geoDistribution) setGeoDistribution(d.geoDistribution);
+        if (d.selectedScenarios) setSelectedScenarios(d.selectedScenarios);
+        if (d.clickTargets) setClickTargets(d.clickTargets);
+        toast.info('Restored unsaved changes from previous session');
+      } catch {}
+    }
+    restoredRef.current = true;
+  }, []);
+
+  // Save to sessionStorage whenever form changes (after restore)
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    const data = { name, siteId, simulationLevel, trafficPattern, visitsPerHour, durationMinutes, geoDistribution, selectedScenarios, clickTargets };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, [name, siteId, simulationLevel, trafficPattern, visitsPerHour, durationMinutes, geoDistribution, selectedScenarios, clickTargets, STORAGE_KEY]);
+
+  // Warn before unload if there's unsaved data
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (name || siteId || clickTargets.length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [name, siteId, clickTargets]);
+
   useEffect(() => {
     sitesApi.list().then(setSites).catch(() => {});
     scenariosApi.list().then(setScenarios).catch(() => {});
     asocksApi.countries().then((c) => { if (c.length > 0) setCountries(c); }).catch(() => {});
 
-    if (isEdit && id) {
+    // Only load from API if no saved session (saved session takes priority for unsaved work)
+    if (isEdit && id && !sessionStorage.getItem(STORAGE_KEY)) {
       campaignsApi.get(id).then((c: Campaign) => {
         setName(c.name);
         setSiteId(c.siteId);
@@ -92,6 +135,8 @@ export default function CampaignFormPage() {
         toast.error('Failed to load campaign');
         navigate('/campaigns');
       });
+    } else {
+      setLoading(false);
     }
   }, [id]);
 
@@ -164,10 +209,12 @@ export default function CampaignFormPage() {
       if (isEdit && id) {
         await campaignsApi.update(id, body);
         toast.success('Campaign updated');
+        sessionStorage.removeItem(STORAGE_KEY);
         navigate(`/campaigns/${id}`);
       } else {
         const created = await campaignsApi.create(body);
         toast.success('Campaign created');
+        sessionStorage.removeItem(STORAGE_KEY);
         navigate(`/campaigns/${created.id}`);
       }
     } catch (err) {
@@ -427,7 +474,7 @@ export default function CampaignFormPage() {
         <div className="flex gap-3 pt-2">
           <button
             type="button"
-            onClick={() => navigate('/campaigns')}
+            onClick={() => { sessionStorage.removeItem(STORAGE_KEY); navigate('/campaigns'); }}
             className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
           >
             Cancel
