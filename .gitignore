@@ -17,8 +17,7 @@ e2e/playwright-report/
 # Java
 *.class
 *.jar
-*.war
-!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 
 # Environment
 .env
