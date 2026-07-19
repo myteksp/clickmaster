@@ -365,15 +365,25 @@ public class BrowserSimulationWorker {
             }
         } catch (Exception ignored) {}
 
+        // For iframe elements, strip >> nth= suffix and try first match
+        String baseSelector = selector.contains(" >> nth=")
+            ? selector.substring(0, selector.indexOf(" >> nth="))
+            : selector;
+
         for (Frame frame : page.frames()) {
             if (frame.equals(page.mainFrame())) continue;
             try {
-                Locator frameLocator = frame.locator(selector).first();
-                if (frameLocator.count() > 0) {
-                    frameLocator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
-                    page.waitForTimeout(500);
-                    frameLocator.click(new Locator.ClickOptions().setTimeout(5000));
-                    return true;
+                // Try exact selector first, then base selector as fallback
+                for (String sel : new String[]{selector, baseSelector}) {
+                    try {
+                        Locator frameLocator = frame.locator(sel).first();
+                        if (frameLocator.count() > 0) {
+                            frameLocator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
+                            page.waitForTimeout(500);
+                            frameLocator.click(new Locator.ClickOptions().setTimeout(5000));
+                            return true;
+                        }
+                    } catch (Exception ignored2) {}
                 }
             } catch (Exception ignored) {}
         }
