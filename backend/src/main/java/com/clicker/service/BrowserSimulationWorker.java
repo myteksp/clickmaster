@@ -275,23 +275,15 @@ public class BrowserSimulationWorker {
         for (ClickTargetDto target : targets) {
             try {
                 int prob = target.probability();
-                if (prob <= 0 || ThreadLocalRandom.current().nextInt(100) >= prob) {
-                    log.debug("Skipping click target (probability {}): {}", prob, target.selector());
-                    continue;
-                }
+                if (prob <= 0 || ThreadLocalRandom.current().nextInt(100) >= prob) continue;
 
-                // Replay navigation steps to reach the target
                 if (target.navigationSteps() != null && !target.navigationSteps().isEmpty()) {
                     for (NavigationStepDto step : target.navigationSteps()) {
                         try {
-                            Locator stepLocator = page.locator(step.selector()).first();
-                            if (stepLocator.count() > 0) {
-                                stepLocator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
-                                stepLocator.click(new Locator.ClickOptions().setTimeout(5000));
-                                page.waitForTimeout(step.waitAfterMs() > 0 ? step.waitAfterMs() : 2000);
-                                currentUrl = page.url();
-                                log.info("Navigation step: clicked '{}' (selector: {})", step.text(), step.selector());
-                            }
+                            clickElementInPageOrFrames(page, step.selector());
+                            page.waitForTimeout(step.waitAfterMs() > 0 ? step.waitAfterMs() : 2000);
+                            currentUrl = page.url();
+                            log.info("Navigation step: clicked '{}'", step.text());
                         } catch (Exception e) {
                             log.warn("Navigation step failed: '{}' - {}", step.text(), e.getMessage());
                         }
@@ -307,23 +299,41 @@ public class BrowserSimulationWorker {
                     }
                 }
 
-                Locator locator = page.locator(target.selector()).first();
-                if (locator.count() == 0) {
-                    log.warn("Click target not found: '{}' (selector: {})", target.text(), target.selector());
-                    continue;
-                }
-
-                locator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
-                page.waitForTimeout(target.delayBeforeMs() > 0 ? target.delayBeforeMs() : 1000);
-                moveMouseTrusted(page);
-                locator.click(new Locator.ClickOptions().setTimeout(5000));
+                clickElementInPageOrFrames(page, target.selector());
                 currentUrl = page.url();
-                log.info("Click target executed: '{}' (selector: {})", target.text(), target.selector());
+                log.info("Click target executed: '{}'", target.text());
                 page.waitForTimeout(target.delayAfterMs() > 0 ? target.delayAfterMs() : 2000);
             } catch (Exception e) {
                 log.warn("Click target failed: '{}' - {}", target.text(), e.getMessage());
             }
         }
+    }
+
+    private void clickElementInPageOrFrames(Page page, String selector) {
+        try {
+            Locator mainLocator = page.locator(selector).first();
+            if (mainLocator.count() > 0) {
+                mainLocator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
+                page.waitForTimeout(1000);
+                moveMouseTrusted(page);
+                mainLocator.click(new Locator.ClickOptions().setTimeout(5000));
+                return;
+            }
+        } catch (Exception ignored) {}
+
+        for (Frame frame : page.frames()) {
+            if (frame.equals(page.mainFrame())) continue;
+            try {
+                Locator frameLocator = frame.locator(selector).first();
+                if (frameLocator.count() > 0) {
+                    frameLocator.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(5000));
+                    page.waitForTimeout(1000);
+                    frameLocator.click(new Locator.ClickOptions().setTimeout(5000));
+                    return;
+                }
+            } catch (Exception ignored) {}
+        }
+        log.warn("Element not found in page or frames: {}", selector);
     }
 
     private void clickRandomLink(Page page, String baseUrl) {
