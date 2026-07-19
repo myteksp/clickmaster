@@ -588,20 +588,23 @@ public class BrowserSimulationWorker {
     private void scrollThroughPage(Page page) {
         try {
             page.evaluate("() => window.scrollTo(0, 0)");
-            page.waitForTimeout(500);
+            page.waitForTimeout(1000);
 
             int viewportHeight = (int) page.evaluate("() => window.innerHeight");
-            int currentPos = 0;
 
             for (int i = 0; i < 30; i++) {
-                currentPos += (int)(viewportHeight * 0.7);
-                int finalPos = currentPos;
-                page.evaluate("(p) => window.scrollTo(0, p)", finalPos);
-                page.waitForTimeout(400);
+                int target = (int)(viewportHeight * 0.7 * (i + 1));
+                page.evaluate("(p) => window.scrollTo(0, p)", target);
+                page.waitForTimeout(600);
             }
 
             page.evaluate("() => window.scrollTo(0, 0)");
-            page.waitForTimeout(1000);
+            page.waitForTimeout(2000);
+
+            try {
+                page.waitForLoadState(com.microsoft.playwright.options.LoadState.NETWORKIDLE,
+                    new Page.WaitForLoadStateOptions().setTimeout(5000));
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 
