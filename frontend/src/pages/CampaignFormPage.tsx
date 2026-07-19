@@ -50,6 +50,7 @@ export default function CampaignFormPage() {
   const isEdit = !!id;
   const STORAGE_KEY = `campaign-form-${id || 'new'}`;
   const restoredRef = useRef(false);
+  const formReadyRef = useRef(false);
 
   const [sites, setSites] = useState<Site[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -88,9 +89,9 @@ export default function CampaignFormPage() {
     restoredRef.current = true;
   }, []);
 
-  // Save to sessionStorage whenever form changes (after restore)
+  // Save to sessionStorage whenever form changes (after restore + API load)
   useEffect(() => {
-    if (!restoredRef.current) return;
+    if (!restoredRef.current || !formReadyRef.current) return;
     const data = { name, siteId, simulationLevel, trafficPattern, visitsPerHour, durationMinutes, geoDistribution, selectedScenarios, clickTargets };
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [name, siteId, simulationLevel, trafficPattern, visitsPerHour, durationMinutes, geoDistribution, selectedScenarios, clickTargets, STORAGE_KEY]);
@@ -112,30 +113,41 @@ export default function CampaignFormPage() {
     scenariosApi.list().then(setScenarios).catch(() => {});
     asocksApi.countries().then((c) => { if (c.length > 0) setCountries(c); }).catch(() => {});
 
-    // Only load from API if no saved session (saved session takes priority for unsaved work)
-    if (isEdit && id && !sessionStorage.getItem(STORAGE_KEY)) {
-      campaignsApi.get(id).then((c: Campaign) => {
-        setName(c.name);
-        setSiteId(c.siteId);
-        setSimulationLevel(c.simulationLevel);
-        setTrafficPattern(c.trafficPattern);
-        setVisitsPerHour(c.visitsPerHour);
-        setDurationMinutes(c.durationMinutes);
-        if (c.geoDistribution?.length) {
-          setGeoDistribution(c.geoDistribution.map((g) => ({ countryCode: g.countryCode, weight: g.weight })));
-        }
-        if (c.scenarios?.length) {
-          setSelectedScenarios(c.scenarios.map((s) => ({ scenarioId: s.scenarioId, entryUrl: s.entryUrl || '', weight: s.weight })));
-        }
-        if (c.clickTargets?.length) {
-          setClickTargets(c.clickTargets);
-        }
+    const hasSavedSession = !!sessionStorage.getItem(STORAGE_KEY);
+
+    if (isEdit && id) {
+      if (hasSavedSession) {
+        // Saved session exists — user had unsaved changes, keep them
+        formReadyRef.current = true;
         setLoading(false);
-      }).catch(() => {
-        toast.error('Failed to load campaign');
-        navigate('/campaigns');
-      });
+      } else {
+        // No saved session — load from API
+        campaignsApi.get(id).then((c: Campaign) => {
+          setName(c.name);
+          setSiteId(c.siteId);
+          setSimulationLevel(c.simulationLevel);
+          setTrafficPattern(c.trafficPattern);
+          setVisitsPerHour(c.visitsPerHour);
+          setDurationMinutes(c.durationMinutes);
+          if (c.geoDistribution?.length) {
+            setGeoDistribution(c.geoDistribution.map((g) => ({ countryCode: g.countryCode, weight: g.weight })));
+          }
+          if (c.scenarios?.length) {
+            setSelectedScenarios(c.scenarios.map((s) => ({ scenarioId: s.scenarioId, entryUrl: s.entryUrl || '', weight: s.weight })));
+          }
+          if (c.clickTargets?.length) {
+            setClickTargets(c.clickTargets);
+          }
+          formReadyRef.current = true;
+          setLoading(false);
+        }).catch(() => {
+          toast.error('Failed to load campaign');
+          navigate('/campaigns');
+        });
+      }
     } else {
+      // New campaign — form is ready immediately (state already restored from sessionStorage if any)
+      formReadyRef.current = true;
       setLoading(false);
     }
   }, [id]);
