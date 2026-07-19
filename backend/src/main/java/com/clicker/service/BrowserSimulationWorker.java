@@ -585,9 +585,28 @@ public class BrowserSimulationWorker {
         return elements;
     }
 
+    private void scrollThroughPage(Page page) {
+        try {
+            page.evaluate("() => window.scrollTo(0, 0)");
+            page.waitForTimeout(500);
+
+            int viewportHeight = (int) page.evaluate("() => window.innerHeight");
+            int currentPos = 0;
+
+            for (int i = 0; i < 30; i++) {
+                currentPos += (int)(viewportHeight * 0.7);
+                int finalPos = currentPos;
+                page.evaluate("(p) => window.scrollTo(0, p)", finalPos);
+                page.waitForTimeout(400);
+            }
+
+            page.evaluate("() => window.scrollTo(0, 0)");
+            page.waitForTimeout(1000);
+        } catch (Exception ignored) {}
+    }
+
     private PageState captureState(Page page, String id, String label) {
-        page.evaluate("() => window.scrollTo(0, 0)");
-        page.waitForTimeout(500);
+        scrollThroughPage(page);
 
         byte[] screenshot = page.screenshot(new Page.ScreenshotOptions()
             .setFullPage(true)
@@ -748,6 +767,7 @@ public class BrowserSimulationWorker {
 
     private SessionState captureSessionState(InteractiveSession session) {
         Page page = session.page();
+        scrollThroughPage(page);
 
         byte[] screenshot = page.screenshot(new Page.ScreenshotOptions()
             .setFullPage(true)
