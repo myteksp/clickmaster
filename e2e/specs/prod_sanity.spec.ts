@@ -26,7 +26,7 @@ test('production: full sanity check', async ({ page }) => {
   await page.fill('input[placeholder="https://example.com"]', 'http://httpbin.org/get');
   await page.click('button:has-text("Create")');
   await page.waitForTimeout(1000);
-  await expect(page.getByText('Sanity Test Site')).toBeVisible();
+  await expect(page.getByText('Sanity Test Site').first()).toBeVisible();
   console.log('✓ Site created');
 
   // CAMPAIGNS

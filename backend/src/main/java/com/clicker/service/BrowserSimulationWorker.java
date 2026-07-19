@@ -164,8 +164,6 @@ public class BrowserSimulationWorker {
             browserContext = acquireContext(proxy, profile, countryCode);
             page = browserContext.newPage();
 
-            page.setDefaultTimeout(20000);
-
             Response response = page.navigate(baseUrl, new Page.NavigateOptions()
                 .setTimeout(30000)
                 .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
