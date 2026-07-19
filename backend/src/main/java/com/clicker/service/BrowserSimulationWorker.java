@@ -592,17 +592,14 @@ public class BrowserSimulationWorker {
                 String frameUrl = frame.url();
                 if (frameUrl == null || frameUrl.isEmpty() || frameUrl.equals("about:blank")) continue;
 
-                ElementHandle frameElement = (ElementHandle) page.evaluate(
-                    "(url) => { const f = document.querySelector('iframe[src*=\"' + new URL(url).hostname + '\"]'); return f; }",
-                    frameUrl);
-
                 int offsetX = 0, offsetY = 0;
-                if (frameElement != null) {
-                    try {
-                        var bb = frameElement.boundingBox();
+                try {
+                    ElementHandle frameEl = frame.frameElement();
+                    if (frameEl != null) {
+                        var bb = frameEl.boundingBox();
                         if (bb != null) { offsetX = (int) bb.x; offsetY = (int) bb.y; }
-                    } catch (Exception ignored) {}
-                }
+                    }
+                } catch (Exception ignored) {}
 
                 Object frameResult = frame.evaluate(ELEMENT_DISCOVERY_JS);
                 if (frameResult instanceof List<?> frameList) {
@@ -610,15 +607,22 @@ public class BrowserSimulationWorker {
                         if (item instanceof Map<?, ?> map) {
                             var el = toDiscoveredElement(map);
                             elements.add(new DiscoveredElement(
-                                el.selector(), "[iframe] " + el.text(), el.tag(),
+                                el.selector(),
+                                "[iframe] " + el.text(),
+                                el.tag(),
                                 el.href(),
-                                el.x() + offsetX, el.y() + offsetY,
-                                el.width(), el.height()
+                                el.x() + offsetX,
+                                el.y() + offsetY,
+                                el.width(),
+                                el.height()
                             ));
                         }
                     }
+                    log.info("Found {} elements in frame: {}", frameList.size(), frameUrl.substring(0, Math.min(50, frameUrl.length())));
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Frame element extraction failed: {}", e.getMessage());
+            }
         }
 
         return elements;
