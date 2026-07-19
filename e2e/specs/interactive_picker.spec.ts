@@ -4,8 +4,8 @@ test('interactive picker: navigate through tabs, select deep target', async ({ p
   test.setTimeout(300000);
 
   await page.goto('/login');
-  await page.fill('input[type="email"]', 'click@test.io');
-  await page.fill('input[type="password"]', 'testpass123');
+  await page.fill('input[type="email"]', 'admin@clickmaster.io');
+  await page.fill('input[type="password"]', 'admin123');
   await page.click('button[type="submit"]');
   await page.waitForURL('/');
 

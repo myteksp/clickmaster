@@ -1,6 +1,7 @@
 import api from './client';
 import type {
   User,
+  UserAccount,
   Site,
   Campaign,
   CampaignRun,
@@ -11,11 +12,15 @@ import type {
 } from './types';
 
 export const authApi = {
-  register: (email: string, password: string, name: string) =>
-    api.post<User>('/auth/register', { email, password, name }),
-
   login: (email: string, password: string) =>
     api.post<User>('/auth/login', { email, password }),
+};
+
+export const usersApi = {
+  list: () => api.get<UserAccount[]>('/users'),
+  create: (data: { name: string; email: string; password: string }) =>
+    api.post<User>('/users', data),
+  delete: (id: string) => api.delete(`/users/${id}`),
 };
 
 export const sitesApi = {

@@ -5,6 +5,14 @@ export interface User {
   token: string;
 }
 
+export interface UserAccount {
+  id: string;
+  email: string;
+  name: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
 export interface Site {
   id: string;
   userId: string;

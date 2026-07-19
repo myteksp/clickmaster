@@ -5,12 +5,11 @@ test.describe('Sites — complete coverage', () => {
 
   test.beforeEach(async ({ page }) => {
     email = `sites-${Date.now()}-${Math.random().toString(36).slice(2,8)}@clicker.io`;
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Site Tester');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', 'testpass123');
+    await page.goto('/login');
+    await page.fill('input[type="email"]', 'admin@clickmaster.io');
+    await page.fill('input[type="password"]', 'admin123');
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/');;
   });
 
   test('empty state shown when no sites', async ({ page }) => {

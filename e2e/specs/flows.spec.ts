@@ -6,12 +6,11 @@ test.describe('Complete User Flows', () => {
     const email = `flow-${Date.now()}@clicker.io`;
     
     // 1. Register
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Flow User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', 'testpass123');
+    await page.goto('/login');
+    await page.fill('input[type="email"]', 'admin@clickmaster.io');
+    await page.fill('input[type="password"]', 'admin123');
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/');;
     await expect(page.locator('nav')).toContainText('Flow User');
 
     // 2. Create site
@@ -65,12 +64,11 @@ test.describe('Complete User Flows', () => {
   test('expired token redirects to login', async ({ page }) => {
     // Register and get a valid session
     const email = `expire-${Date.now()}@clicker.io`;
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Expire Test');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', 'testpass123');
+    await page.goto('/login');
+    await page.fill('input[type="email"]', 'admin@clickmaster.io');
+    await page.fill('input[type="password"]', 'admin123');
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/');;
 
     // Corrupt the token to simulate expiration
     await page.evaluate(() => {
@@ -85,19 +83,18 @@ test.describe('Complete User Flows', () => {
 
     // Should be able to log in again
     await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', 'testpass123');
+    await page.fill('input[type="password"]', 'admin123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL('/');
   });
 
   test('navigation: all pages reachable and show correct content', async ({ page }) => {
     const email = `nav-${Date.now()}@clicker.io`;
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Nav Test');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', 'testpass123');
+    await page.goto('/login');
+    await page.fill('input[type="email"]', 'admin@clickmaster.io');
+    await page.fill('input[type="password"]', 'admin123');
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/');;
 
     // Dashboard
     await page.click('a:has-text("Dashboard")');

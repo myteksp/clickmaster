@@ -6,7 +6,6 @@ import type { User } from '../api/types';
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -35,13 +34,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, name: string) => {
-    const user = await authApi.register(email, password, name);
-    api.setToken(user.token);
-    localStorage.setItem('user', JSON.stringify(user));
-    setUser(user);
-  }, []);
-
   const logout = useCallback(() => {
     api.setToken(null);
     localStorage.removeItem('user');
@@ -49,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

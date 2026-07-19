@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 
@@ -70,12 +70,6 @@ export default function LoginPage() {
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
-          <p className="text-sm text-center text-gray-400">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-emerald-400 hover:text-emerald-300">
-              Register
-            </Link>
-          </p>
         </form>
       </div>
     </div>

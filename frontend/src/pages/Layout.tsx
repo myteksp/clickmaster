@@ -18,6 +18,7 @@ export default function Layout() {
     { path: '/campaigns', label: 'Campaigns', exact: false },
     { path: '/scenarios', label: 'Scenarios', exact: false },
     { path: '/sites', label: 'Sites', exact: false },
+    { path: '/users', label: 'Users', exact: false },
   ];
 
   const isActive = (path: string, exact: boolean) => {
