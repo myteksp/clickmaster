@@ -651,12 +651,22 @@ public class BrowserSimulationWorker {
             }
 
             page.evaluate("() => window.scrollTo(0, 0)");
-            page.waitForTimeout(2000);
+            page.waitForTimeout(3000);
 
             try {
-                page.waitForLoadState(com.microsoft.playwright.options.LoadState.NETWORKIDLE,
+                page.waitForLoadState(LoadState.NETWORKIDLE,
                     new Page.WaitForLoadStateOptions().setTimeout(5000));
             } catch (Exception ignored) {}
+
+            for (Frame frame : page.frames()) {
+                if (frame.equals(page.mainFrame())) continue;
+                try {
+                    frame.waitForLoadState(LoadState.DOMCONTENTLOADED,
+                        new Frame.WaitForLoadStateOptions().setTimeout(8000));
+                    log.info("Frame loaded: {}", frame.url());
+                } catch (Exception ignored) {}
+            }
+            page.waitForTimeout(1000);
         } catch (Exception ignored) {}
     }
 
