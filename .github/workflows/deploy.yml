@@ -1,0 +1,61 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Run backend tests
+        working-directory: backend
+        run: ./gradlew test || gradle test
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run frontend tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+
+  deploy:
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 169.58.43.127
+          username: root
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd /opt/clickmaster || (git clone https://github.com/myteksp/clickmaster.git /opt/clickmaster && cd /opt/clickmaster)
+            cd /opt/clickmaster
+            git pull origin main
+
+            if [ ! -f .env ]; then
+              cat > .env << 'ENVEOF'
+            ASOCKS_API_KEY=0HkIAwHgsHJusnmA9l8EGUyKgbihHqU6
+            JWT_SECRET=clickmaster-prod-jwt-secret-2024-must-be-256-bits-for-hs256-algo
+            DB_PASSWORD=clicker_secure_2024
+            ENVEOF
+            fi
+
+            cd backend && gradle bootJar && cd ..
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d --build
+            echo "Deployment complete"

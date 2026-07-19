@@ -101,7 +101,7 @@ public class SimulationEngine {
             new AtomicBoolean(true),
             new AtomicInteger(0), new AtomicInteger(0), new AtomicInteger(0),
             Instant.now(),
-            new Semaphore(5)
+            new Semaphore(30)
         );
 
         long intervalMs = calculateIntervalMs(campaign);
