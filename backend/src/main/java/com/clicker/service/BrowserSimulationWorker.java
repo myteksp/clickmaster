@@ -386,8 +386,10 @@ public class BrowserSimulationWorker {
                 // Diagnostic: count elements in this frame
                 try {
                     int frameElCount = (int) frame.evaluate("() => document.querySelectorAll('a, button').length");
-                    log.info("Frame {} has {} clickable elements",
-                        frame.url().substring(0, Math.min(40, frame.url().length())), frameElCount);
+                    if (frameElCount > 0 && frameElCount < 30) {
+                        String texts = (String) frame.evaluate("() => Array.from(document.querySelectorAll('a, button')).map(e => (e.textContent || '').trim().substring(0, 30)).filter(t => t.length > 0).join(' | ')");
+                        log.info("Frame {} ({} elements): {}", frame.url().substring(0, Math.min(30, frame.url().length())), frameElCount, texts);
+                    }
                 } catch (Exception ignored) {}
 
                 // Try exact selector first, then base selector as fallback
