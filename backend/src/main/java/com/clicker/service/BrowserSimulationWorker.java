@@ -383,8 +383,18 @@ public class BrowserSimulationWorker {
         for (Frame frame : page.frames()) {
             if (frame.equals(page.mainFrame())) continue;
             try {
+                // Diagnostic: count elements in this frame
+                int frameElCount = 0;
+                try {
+                    frameElCount = (int) frame.evaluate("() => document.querySelectorAll('a, button').length");
+                    log.info("Frame {} has {} clickable elements", 
+                        frame.url().substring(0, Math.min(40, frame.url().length())), frameElCount);
+                } catch (Exception ignored) {}
+
                 // Try exact selector first, then base selector as fallback
-                for (String sel : new String[]{selector, baseSelector}) {
+                String baseSelector = selector.contains(" >> nth=")
+                    ? selector.substring(0, selector.indexOf(" >> nth="))
+                    : selector;
                     try {
                         Locator frameLocator = frame.locator(sel).first();
                         if (frameLocator.count() > 0) {
