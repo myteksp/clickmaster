@@ -383,16 +383,26 @@ public class BrowserSimulationWorker {
         for (Frame frame : page.frames()) {
             if (frame.equals(page.mainFrame())) continue;
             try {
-                // Diagnostic: count elements in this frame
-                try {
-                    int frameElCount = (int) frame.evaluate("() => document.querySelectorAll('a, button').length");
-                    if (frameElCount > 0 && frameElCount < 30) {
-                        String texts = (String) frame.evaluate("() => Array.from(document.querySelectorAll('a, button')).map(e => (e.textContent || '').trim().substring(0, 30)).filter(t => t.length > 0).join(' | ')");
-                        log.info("Frame {} ({} elements): {}", frame.url().substring(0, Math.min(30, frame.url().length())), frameElCount, texts);
-                    }
-                } catch (Exception ignored) {}
+                // For cross-origin frames, frame.locator() with :has-text() may not work.
+                // Use frame.evaluate() as a more reliable fallback.
+                String searchText = null;
+                if (selector.contains(":has-text(\"")) {
+                    searchText = selector.substring(selector.indexOf(":has-text(\"") + 11, selector.lastIndexOf("\""));
+                } else if (selector.contains(":has-text('")) {
+                    searchText = selector.substring(selector.indexOf(":has-text('") + 11, selector.lastIndexOf("'"));
+                }
 
-                // Try exact selector first, then base selector as fallback
+                if (searchText != null) {
+                    final String text = searchText;
+                    Boolean clicked = (Boolean) frame.evaluate("(searchText) => { const els = document.querySelectorAll('a, button, [role=button]'); for (const el of els) { if ((el.textContent || '').trim().includes(searchText)) { el.scrollIntoView({block:'center'}); el.click(); return true; } } return false; }", text);
+                    if (Boolean.TRUE.equals(clicked)) {
+                        log.info("Frame element clicked via evaluate: '{}' in {}", text,
+                            frame.url().substring(0, Math.min(40, frame.url().length())));
+                        return true;
+                    }
+                }
+
+                // Fall back to frame.locator with base CSS selector
                 for (String sel : new String[]{selector, baseSelector}) {
                     try {
                         Locator frameLocator = frame.locator(sel).first();
