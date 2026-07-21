@@ -204,11 +204,7 @@ public class AsocksService {
         CountryPortPool pool = portPools.get(poolKey + "-" + countryCode);
         if (pool != null && info != null) {
             pool.add(info);
-            long now = System.currentTimeMillis();
-            if (now - info.lastRefresh() > 180_000) {
-                portInfoCache.put(proxyUrl, new PortInfo(info.id(), info.server(), info.port, info.login, info.password, info.countryCode(), now));
-                CompletableFuture.runAsync(() -> refreshPortIp(info.id()));
-            }
+            CompletableFuture.runAsync(() -> refreshPortIp(info.id()));
         }
     }
 
