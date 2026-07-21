@@ -63,6 +63,18 @@ public class BrowserSimulationWorker {
     private BrowserContext acquireContext(String proxyUrl, OrganicProfile profile, String countryCode) {
         getPlaywright();
 
+        // Launch a fresh browser per visit for complete isolation
+        Browser browser = playwright.chromium().launch(
+            new BrowserType.LaunchOptions()
+                .setHeadless(true)
+                .setArgs(List.of(
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled"
+                ))
+        );
+
         Browser.NewContextOptions options = new Browser.NewContextOptions()
             .setViewportSize(profile.viewportWidth(), profile.viewportHeight())
             .setLocale(countryLocale(countryCode, profile))
@@ -91,7 +103,7 @@ public class BrowserSimulationWorker {
             options.setProxy(proxy);
         }
 
-        BrowserContext context = sharedBrowser.newContext(options);
+        BrowserContext context = browser.newContext(options);
 
         context.addInitScript(buildFingerprintScript(profile));
 
@@ -220,6 +232,7 @@ public class BrowserSimulationWorker {
             }
             if (browserContext != null) {
                 try { browserContext.close(); } catch (Exception ignored) {}
+                try { browserContext.browser().close(); } catch (Exception ignored) {}
             }
         }
     }
