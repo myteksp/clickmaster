@@ -296,6 +296,20 @@ public class SimulationEngine {
                 case FULL_BROWSER -> browserWorker.visitFull(ctx.campaign(), proxy, countryCode, ctx);
             };
 
+            // Retry once on failure with a fresh proxy
+            if (!success) {
+                asocksService.releaseProxy(poolKey, proxy, countryCode);
+                proxy = asocksService.acquireProxy(poolKey, countryCode);
+                if (proxy != null) {
+                    success = switch (level) {
+                        case HTTP_ONLY -> httpWorker.visitSimple(ctx.campaign(), proxy, countryCode, ctx);
+                        case BROWSER_NAVIGATION -> httpWorker.visitWithNavigation(ctx.campaign(), proxy, countryCode, ctx);
+                        case FULL_BROWSER -> browserWorker.visitFull(ctx.campaign(), proxy, countryCode, ctx);
+                    };
+                    if (!success) log.warn("Visit retry also failed");
+                }
+            }
+
             ctx.totalVisits().incrementAndGet();
             if (success) ctx.successfulVisits().incrementAndGet();
             else ctx.failedVisits().incrementAndGet();

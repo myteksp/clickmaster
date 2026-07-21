@@ -27,7 +27,7 @@ public class AsocksService {
 
     private final Map<String, CountryPortPool> portPools = new ConcurrentHashMap<>();
     private final Map<String, PortInfo> portInfoCache = new ConcurrentHashMap<>();
-    private static final int PORTS_PER_POOL = 10;
+    private static final int PORTS_PER_POOL = 20;
     private static final int POOL_REFILL_THRESHOLD = 3;
 
     public record PortInfo(int id, String server, int port, String login,
