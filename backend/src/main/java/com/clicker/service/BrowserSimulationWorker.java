@@ -182,26 +182,24 @@ public class BrowserSimulationWorker {
 
             int statusCode = response != null ? response.status() : 0;
 
-            page.waitForTimeout(1000);
+            // Page loaded successfully — count as success from here even if scroll/click fails
+            try { page.waitForTimeout(1000); } catch (Exception ignored) {}
+            try { acceptCookieConsent(page); } catch (Exception ignored) {}
+            try { page.waitForTimeout(2000); } catch (Exception ignored) {}
+            try { moveMouseTrusted(page); } catch (Exception ignored) {}
+            try { scrollDown(page); } catch (Exception ignored) {}
+            try { page.waitForTimeout(2000); } catch (Exception ignored) {}
+            try { scrollUp(page); } catch (Exception ignored) {}
+            try { page.waitForTimeout(1000); } catch (Exception ignored) {}
 
-            acceptCookieConsent(page);
-
-            page.waitForTimeout(2000);
-
-            moveMouseTrusted(page);
-
-            scrollDown(page);
-            page.waitForTimeout(2000);
-
-            scrollUp(page);
-            page.waitForTimeout(1000);
-
-            List<ClickTargetDto> targets = parseClickTargets(campaign);
-            if (!targets.isEmpty()) {
-                executeClickTargets(page, baseUrl, targets);
-            } else if (ThreadLocalRandom.current().nextDouble() < 0.5) {
-                clickRandomLink(page, baseUrl);
-            }
+            try {
+                List<ClickTargetDto> targets = parseClickTargets(campaign);
+                if (!targets.isEmpty()) {
+                    executeClickTargets(page, baseUrl, targets);
+                } else if (ThreadLocalRandom.current().nextDouble() < 0.5) {
+                    clickRandomLink(page, baseUrl);
+                }
+            } catch (Exception ignored) {}
 
             long responseTime = System.currentTimeMillis() - start;
 
