@@ -176,11 +176,25 @@ public class BrowserSimulationWorker {
             browserContext = acquireContext(proxy, profile, countryCode);
             page = browserContext.newPage();
 
-            Response response = page.navigate(baseUrl, new Page.NavigateOptions()
-                .setTimeout(30000)
-                .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
+            Response response = null;
+            for (int navAttempt = 0; navAttempt < 3 && response == null; navAttempt++) {
+                try {
+                    response = page.navigate(baseUrl, new Page.NavigateOptions()
+                        .setTimeout(30000)
+                        .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
+                } catch (Exception navError) {
+                    log.warn("Navigation attempt {} failed: {}", navAttempt + 1, navError.getMessage());
+                    if (navAttempt < 2) {
+                        try { page.waitForTimeout(3000); } catch (Exception ignored) {}
+                    }
+                }
+            }
 
-            int statusCode = response != null ? response.status() : 0;
+            if (response == null) {
+                throw new RuntimeException("Navigation failed after 3 attempts");
+            }
+
+            int statusCode = response.status();
 
             // Page loaded successfully — count as success from here even if scroll/click fails
             try { page.waitForTimeout(1000); } catch (Exception ignored) {}
