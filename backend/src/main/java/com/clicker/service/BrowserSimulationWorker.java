@@ -64,17 +64,26 @@ public class BrowserSimulationWorker {
     private BrowserContext acquireContext(String proxyUrl, OrganicProfile profile, String countryCode) {
         getPlaywright();
 
-        // Launch a fresh browser per visit for complete isolation
-        Browser browser = playwright.chromium().launch(
-            new BrowserType.LaunchOptions()
-                .setHeadless(true)
-                .setArgs(List.of(
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled"
-                ))
-        );
+        BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
+            .setHeadless(true)
+            .setArgs(List.of(
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled"
+            ));
+
+        if (proxyUrl != null && !proxyUrl.isBlank()) {
+            ParsedProxy parsed = ParsedProxy.parse(proxyUrl);
+            Proxy proxy = new Proxy(parsed.server);
+            if (parsed.username != null) {
+                proxy.setUsername(parsed.username);
+                proxy.setPassword(parsed.password);
+            }
+            launchOptions.setProxy(proxy);
+        }
+
+        Browser browser = playwright.chromium().launch(launchOptions);
 
         Browser.NewContextOptions options = new Browser.NewContextOptions()
             .setViewportSize(profile.viewportWidth(), profile.viewportHeight())
@@ -92,16 +101,6 @@ public class BrowserSimulationWorker {
                 "sec-ch-ua-platform", profile.secChUaPlatform(),
                 "accept-language", countryAcceptLanguage(countryCode, profile)
             ));
-        }
-
-        if (proxyUrl != null && !proxyUrl.isBlank()) {
-            ParsedProxy parsed = ParsedProxy.parse(proxyUrl);
-            Proxy proxy = new Proxy(parsed.server);
-            if (parsed.username != null) {
-                proxy.setUsername(parsed.username);
-                proxy.setPassword(parsed.password);
-            }
-            options.setProxy(proxy);
         }
 
         BrowserContext context = browser.newContext(options);
