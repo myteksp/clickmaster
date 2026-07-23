@@ -44,20 +44,21 @@ public class BrowserSimulationWorker {
     private synchronized Playwright getPlaywright() {
         if (playwright == null) {
             playwright = Playwright.create();
-            sharedBrowser = playwright.chromium().launch(
-                new BrowserType.LaunchOptions()
-                    .setHeadless(true)
-                    .setArgs(List.of(
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-features=IsolateOrigins,site-per-process"
-                    ))
-            );
-            log.info("Playwright browser launched");
+            log.info("Playwright instance created");
         }
         return playwright;
+    }
+
+    private synchronized void resetPlaywright() {
+        log.warn("Resetting Playwright instance (driver died)");
+        if (sharedBrowser != null) {
+            try { sharedBrowser.close(); } catch (Exception ignored) {}
+            sharedBrowser = null;
+        }
+        if (playwright != null) {
+            try { playwright.close(); } catch (Exception ignored) {}
+            playwright = null;
+        }
     }
 
     private BrowserContext acquireContext(String proxyUrl, OrganicProfile profile, String countryCode) {
@@ -177,10 +178,10 @@ public class BrowserSimulationWorker {
             page = browserContext.newPage();
 
             Response response = null;
-            for (int navAttempt = 0; navAttempt < 3 && response == null; navAttempt++) {
+            for (int navAttempt = 0; navAttempt < 2 && response == null; navAttempt++) {
                 try {
                     response = page.navigate(baseUrl, new Page.NavigateOptions()
-                        .setTimeout(30000)
+                        .setTimeout(15000)
                         .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
                 } catch (Exception navError) {
                     log.warn("Navigation attempt {} failed: {}", navAttempt + 1, navError.getMessage());
@@ -231,8 +232,15 @@ public class BrowserSimulationWorker {
             if (errorMsg != null && errorMsg.length() > 500) {
                 errorMsg = errorMsg.substring(0, 500);
             }
+            
+            // Detect dead Playwright driver and reset for next visit
+            if (errorMsg != null && (errorMsg.contains("pipe closed") || errorMsg.contains("connection closed"))) {
+                log.error("Playwright driver died, resetting instance");
+                resetPlaywright();
+            }
+            
             saveVisitEvent(context.runId(), proxy, countryCode, "/",
-                null, (int) responseTime, false, errorMsg, profile);
+                null, (int) Math.min(responseTime, Integer.MAX_VALUE), false, errorMsg, profile);
             webSocketPublisher.sendVisit(
                 context.runId().toString(), context.campaignId().toString(),
                 "/", null, (int) responseTime, false, maskProxy(proxy)
